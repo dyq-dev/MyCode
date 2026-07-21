@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="AI.Assistant.Core/AI.Assistant.Core.csproj" />
+  <Project Path="AI.Assistant.Infrastructure/AI.Assistant.Infrastructure.csproj" />
+  <Project Path="AI.Assistant.Client/AI.Assistant.Client.csproj" />
+  <Project Path="AI.Assistant.Tests/AI.Assistant.Tests.csproj" />
+</Solution>

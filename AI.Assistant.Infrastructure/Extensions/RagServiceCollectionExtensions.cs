@@ -1,5 +1,7 @@
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Options;
+using AI.Assistant.Infrastructure.Services.Rag.Chunking;
+using AI.Assistant.Infrastructure.Services.Rag.Chunking.Strategies;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,13 +15,22 @@ public static class RagServiceCollectionExtensions
         configure?.Invoke(options);
         services.AddSingleton(options);
 
-        return services.AddRagScanner();
+        return services
+            .AddRagScanner()
+            .AddRagChunking();
     }
 
     public static IServiceCollection AddRagScanner(this IServiceCollection services)
     {
         services.AddSingleton<IProjectScanner, ProjectScanner>();
         services.AddSingleton<IIndexComparer, IndexComparer>();
+        return services;
+    }
+
+    public static IServiceCollection AddRagChunking(this IServiceCollection services)
+    {
+        services.AddSingleton<IChunkManager, ChunkManager>();
+        services.AddSingleton<IChunkStrategy, WholeFileChunkStrategy>();
         return services;
     }
 }

@@ -2,6 +2,7 @@ using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Options;
 using AI.Assistant.Infrastructure.Services.Rag.Chunking;
 using AI.Assistant.Infrastructure.Services.Rag.Chunking.Strategies;
+using AI.Assistant.Infrastructure.Services.Rag.Indexing;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
 using AI.Assistant.Infrastructure.Services.Rag.Storage;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,7 +20,8 @@ public static class RagServiceCollectionExtensions
         return services
             .AddRagScanner()
             .AddRagChunking()
-            .AddRagStorage();
+            .AddRagStorage()
+            .AddRagIndexing();
     }
 
     public static IServiceCollection AddRagScanner(this IServiceCollection services)
@@ -40,6 +42,12 @@ public static class RagServiceCollectionExtensions
     {
         services.AddSingleton<IQdrantIndexStorage, QdrantIndexStorage>();
         services.AddSingleton<ICodeIndexStore, CodeIndexStore>();
+        return services;
+    }
+
+    public static IServiceCollection AddRagIndexing(this IServiceCollection services)
+    {
+        services.AddSingleton<ICodeIndexer, CodeIndexer>();
         return services;
     }
 }

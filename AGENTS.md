@@ -34,7 +34,7 @@ AI.Assistant.slnx
 │   │       ├── Chunking/             # WholeFileChunkStrategy + ChunkManager
 │   │       ├── Storage/              # CodeIndexStore (IVectorStore + IQdrantIndexStorage)
 │   │       ├── Retrieval/            # (planned)
-│   │       └── Indexing/             # (planned)
+│   │       └── Indexing/             # CodeIndexer
 │   └── Extensions/
 │       ├── ServiceCollectionExtensions.cs    # AddInfrastructure()
 │       └── RagServiceCollectionExtensions.cs # AddRag()
@@ -87,7 +87,8 @@ Chat is selected at runtime via `LLM:ChatProvider` / `LLM:EmbeddingProvider` = `
 - `IIndexComparer` (`IndexComparer`): ✅ implemented (O(n) dict-based, case-insensitive, 16 tests).
 - `IChunkStrategy` (`WholeFileChunkStrategy`) + `IChunkManager` (`ChunkManager`): ✅ implemented (24 tests).
 - `ICodeIndexStore` (`CodeIndexStore`): ✅ implemented (16 tests, via `IVectorStore` + `IQdrantIndexStorage`).
-- `ICodeRetriever` / `ICodeIndexer`: 📋 designed, not yet implemented.
+- `ICodeIndexer` (`CodeIndexer`): ✅ implemented (20 tests, upsert-first cleanup-last).
+- `ICodeRetriever`: 📋 designed, not yet implemented.
 
 ## Gotchas
 

@@ -2,36 +2,65 @@
 
 ## Project
 
-Local AI Assistant Demo — .NET 8 WPF client (MVVM) with a pluggable LLM backend. Chat works today via Ollama or any OpenAI-compatible cloud API; RAG (embeddings + Qdrant) is scaffolded but not yet implemented.
+Local AI Assistant Demo — .NET 8 WPF client (MVVM) with a pluggable LLM backend. Chat works today via Ollama or any OpenAI-compatible cloud API. Memory (fact extraction + session summary) and Code RAG (ProjectScanner phase) are implemented.
 
 ## Build & Run
 
 ```
 dotnet build AI.Assistant.slnx
 dotnet run --project AI.Assistant.Client
+dotnet test AI.Assistant.Tests
 ```
 
-Requires the Windows Desktop SDK (`net8.0-windows`). Will not build or run on Linux/macOS. No tests are configured.
+Requires the Windows Desktop SDK (`net8.0-windows`). Will not build or run on Linux/macOS. Tests run on any platform.
 
 ## Solution Structure
 
 ```
 AI.Assistant.slnx
-├── AI.Assistant.Core/           # net8.0 — Models + Interfaces only (no dependencies)
-│   ├── Models/                  # ChatMessage, Conversation, MessageRole, ChatMessageViewModel
-│   └── Interfaces/              # IChatService, IEmbeddingService, IVectorStore
-├── AI.Assistant.Infrastructure/ # net8.0 — HTTP service implementations + DI
-│   ├── Services/                # Ollama*, OpenAICompatible* (chat), Qdrant* (placeholder)
-│   └── Extensions/              # AddInfrastructure() + InfrastructureOptions
-└── AI.Assistant.Client/         # net8.0-windows — WPF app
-    ├── ViewModels/              # MainViewModel, ConversationViewModel (CommunityToolkit.Mvvm)
-    ├── Views/                   # MainWindow (ChatGPT-style layout)
-    ├── Converters/              # BoolToVisibilityConverter
-    ├── Themes/                  # Generic.xaml
-    └── appsettings.json         # LLM provider + Qdrant config (required, not optional)
+├── AI.Assistant.Core/                # net8.0 — Models + Interfaces only (no dependencies)
+│   ├── Interfaces/                   # IChatService, IEmbeddingService, IVectorStore, IMemoryFilter
+│   ├── Models/                       # ChatMessage, ExtractedFact, MemoryFilterResult, KnowledgeContext
+│   └── Rag/                          # Code RAG module (namespace-isolated)
+│       ├── Interfaces/               # IProjectScanner
+│       ├── Models/                   # CodeFile
+│       └── Options/                  # RagOptions
+│
+├── AI.Assistant.Infrastructure/      # net8.0 — All service implementations + DI
+│   ├── Services/
+│   │   ├── (Memory, Chat, Embedding, VectorStore)
+│   │   └── Rag/                      # Code RAG implementations
+│   │       ├── Scanner/              # ProjectScanner
+│   │       ├── Chunking/             # (planned)
+│   │       ├── Storage/              # (planned)
+│   │       ├── Retrieval/            # (planned)
+│   │       └── Indexing/             # (planned)
+│   └── Extensions/
+│       ├── ServiceCollectionExtensions.cs    # AddInfrastructure()
+│       └── RagServiceCollectionExtensions.cs # AddRag()
+│
+├── AI.Assistant.Client/              # net8.0-windows — WPF app (MVVM)
+│
+└── AI.Assistant.Tests/               # net8.0 — xUnit tests
+    └── ProjectScannerTests.cs        # 18 tests covering filter, hash, encoding
 ```
 
-Dependency direction: Client → Infrastructure → Core (Core depends on nothing).
+Dependency direction: Client → Infrastructure → Core (Core depends on nothing). Tests → Core + Infrastructure.
+
+## Memory Module
+
+- Three-layer retrieval: Session Summary (MSSQL) → Facts (Qdrant payload) → Raw text (Qdrant + MSSQL)
+- `IMemoryFilter` — rule-based, skips greetings/thanks/meaningless content
+- Fact extraction via LLM with `[category] content` structured output
+- Categories: user_profile, preference, project, technical, requirement, experience, other
+- `SessionSummaryRecord`: Version, CreatedAt, UpdatedAt tracking
+
+## Code RAG Module (Phase 1)
+
+- `IProjectScanner` — scans project dir, filters by `RagOptions`, computes SHA256, detects encoding (UTF-8/BOM/fallback)
+- Architecture doc: `docs/superpowers/specs/2026-07-21-code-rag-design.md`
+- Future phases: ChunkManager + IChunkStrategy → ICodeIndexStore → ICodeRetriever → ICodeIndexer
+- Shared infrastructure: `IEmbeddingService`, `IVectorStore` (reused from Core, collection: `code_rag`)
 
 ## LLM Provider Configuration (appsettings.json)
 
@@ -44,15 +73,18 @@ Chat is selected at runtime via `LLM:ChatProvider` / `LLM:EmbeddingProvider` = `
 
 - **MVVM**: Use `[ObservableProperty]` / `[RelayCommand]` from CommunityToolkit.Mvvm. Never implement `INotifyPropertyChanged` by hand.
 - **DI**: Wired in `App.xaml.cs` via `Host.CreateDefaultBuilder` + `AddInfrastructure(...)`. `MainViewModel` and `MainWindow` are singletons; `ConversationViewModel` is transient.
+- **Shared infra, isolated business**: `IEmbeddingService`/`IVectorStore` are reused across Memory and RAG; business models and services are fully separated by namespace (`Rag/` vs flat `Models/`).
 - **Demo fallback**: If no `IChatService` is registered, `ConversationViewModel` runs a fake "[Demo] 收到消息" reply — keep this path working when changing send logic.
 
-## Implementation Status (what throws)
+## Implementation Status
 
 - `IChatService`: ✅ implemented (Ollama + OpenAI-compatible).
-- `IEmbeddingService` (`OllamaEmbeddingService`, `OpenAICompatibleEmbeddingService`): ❌ `NotImplementedException`.
-- `IVectorStore` (`QdrantVectorStore`): ❌ `NotImplementedException`. RAG endpoints (`/collections/{name}/points`) are stubbed.
-
-Do NOT assume placeholder services are finished — they will throw at runtime.
+- `IEmbeddingService` (`OllamaEmbeddingService`, `OpenAICompatibleEmbeddingService`): ✅ implemented.
+- `IVectorStore` (`QdrantVectorStore`): ✅ implemented (gRPC, session isolation filter fixed).
+- `IMemoryFilter`: ✅ implemented (rule-based).
+- `MemoryService`: ✅ fact extraction + session summary + three-layer retrieval.
+- `IProjectScanner`: ✅ implemented (18 tests).
+- `IChunkStrategy` / `IChunkManager` / `ICodeIndexStore` / `ICodeRetriever` / `ICodeIndexer`: 📋 designed, not yet implemented.
 
 ## Gotchas
 
@@ -66,3 +98,6 @@ Do NOT assume placeholder services are finished — they will throw at runtime.
 - CommunityToolkit.Mvvm 8.4.0
 - Microsoft.Extensions.DependencyInjection / Hosting / Http 8.0.1
 - Microsoft.Extensions.Configuration.Json (via Host defaults) for appsettings
+- Dapper 2.1.79, Microsoft.Data.SqlClient 5.2.2
+- Qdrant.Client 1.18.1 (gRPC)
+- xUnit 2.9.3, Microsoft.NET.Test.Sdk 17.14.1 (tests only)

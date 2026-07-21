@@ -45,9 +45,10 @@ public static class ServiceCollectionExtensions
         });
 
         // ============ Qdrant 向量数据库（gRPC 端口 6334） ============
-        services.AddSingleton<IVectorStore>(_ =>
+        services.AddSingleton<QdrantClient>(_ => new QdrantClient("localhost", 6334));
+        services.AddSingleton<IVectorStore>(sp =>
         {
-            var qdrantClient = new QdrantClient("localhost", 6334);
+            var qdrantClient = sp.GetRequiredService<QdrantClient>();
             return new QdrantVectorStore(qdrantClient);
         });
 

@@ -3,6 +3,7 @@ using AI.Assistant.Core.Rag.Options;
 using AI.Assistant.Infrastructure.Services.Rag.Chunking;
 using AI.Assistant.Infrastructure.Services.Rag.Chunking.Strategies;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
+using AI.Assistant.Infrastructure.Services.Rag.Storage;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace AI.Assistant.Infrastructure.Extensions;
@@ -17,7 +18,8 @@ public static class RagServiceCollectionExtensions
 
         return services
             .AddRagScanner()
-            .AddRagChunking();
+            .AddRagChunking()
+            .AddRagStorage();
     }
 
     public static IServiceCollection AddRagScanner(this IServiceCollection services)
@@ -31,6 +33,13 @@ public static class RagServiceCollectionExtensions
     {
         services.AddSingleton<IChunkManager, ChunkManager>();
         services.AddSingleton<IChunkStrategy, WholeFileChunkStrategy>();
+        return services;
+    }
+
+    public static IServiceCollection AddRagStorage(this IServiceCollection services)
+    {
+        services.AddSingleton<IQdrantIndexStorage, QdrantIndexStorage>();
+        services.AddSingleton<ICodeIndexStore, CodeIndexStore>();
         return services;
     }
 }

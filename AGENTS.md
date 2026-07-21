@@ -31,8 +31,8 @@ AI.Assistant.slnx
 │   │   ├── (Memory, Chat, Embedding, VectorStore)
 │   │   └── Rag/                      # Code RAG implementations
 │   │       ├── Scanner/              # ProjectScanner
-│   │       ├── Chunking/             # (planned)
-│   │       ├── Storage/              # (planned)
+│   │       ├── Chunking/             # WholeFileChunkStrategy + ChunkManager
+│   │       ├── Storage/              # CodeIndexStore (IVectorStore + IQdrantIndexStorage)
 │   │       ├── Retrieval/            # (planned)
 │   │       └── Indexing/             # (planned)
 │   └── Extensions/
@@ -85,7 +85,9 @@ Chat is selected at runtime via `LLM:ChatProvider` / `LLM:EmbeddingProvider` = `
 - `MemoryService`: ✅ fact extraction + session summary + three-layer retrieval.
 - `IProjectScanner`: ✅ implemented (18 tests).
 - `IIndexComparer` (`IndexComparer`): ✅ implemented (O(n) dict-based, case-insensitive, 16 tests).
-- `IChunkStrategy` / `IChunkManager` / `ICodeIndexStore` / `ICodeRetriever` / `ICodeIndexer`: 📋 designed, not yet implemented.
+- `IChunkStrategy` (`WholeFileChunkStrategy`) + `IChunkManager` (`ChunkManager`): ✅ implemented (24 tests).
+- `ICodeIndexStore` (`CodeIndexStore`): ✅ implemented (16 tests, via `IVectorStore` + `IQdrantIndexStorage`).
+- `ICodeRetriever` / `ICodeIndexer`: 📋 designed, not yet implemented.
 
 ## Gotchas
 

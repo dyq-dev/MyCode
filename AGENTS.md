@@ -84,6 +84,7 @@ Chat is selected at runtime via `LLM:ChatProvider` / `LLM:EmbeddingProvider` = `
 - `IMemoryFilter`: ✅ implemented (rule-based).
 - `MemoryService`: ✅ fact extraction + session summary + three-layer retrieval.
 - `IProjectScanner`: ✅ implemented (18 tests).
+- `IIndexComparer` (`IndexComparer`): ✅ implemented (O(n) dict-based, case-insensitive, 16 tests).
 - `IChunkStrategy` / `IChunkManager` / `ICodeIndexStore` / `ICodeRetriever` / `ICodeIndexer`: 📋 designed, not yet implemented.
 
 ## Gotchas

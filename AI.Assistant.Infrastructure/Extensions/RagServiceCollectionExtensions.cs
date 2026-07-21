@@ -19,6 +19,7 @@ public static class RagServiceCollectionExtensions
     public static IServiceCollection AddRagScanner(this IServiceCollection services)
     {
         services.AddSingleton<IProjectScanner, ProjectScanner>();
+        services.AddSingleton<IIndexComparer, IndexComparer>();
         return services;
     }
 }

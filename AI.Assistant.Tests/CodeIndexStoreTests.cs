@@ -97,7 +97,7 @@ public class CodeIndexStoreTests
     [Fact]
     public async Task SaveChunksAsync_EmptyChunks_DoesNothing()
     {
-        await _store.SaveChunksAsync([]);
+        await _store.SaveChunksAsync(Array.Empty<CodeChunk>());
 
         Assert.Empty(_qdrant.GetAll());
     }

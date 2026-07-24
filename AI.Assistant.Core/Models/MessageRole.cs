@@ -12,5 +12,8 @@ public enum MessageRole
     Assistant,
 
     /// <summary>系统消息（如提示词、错误信息等）</summary>
-    System
+    System,
+
+    /// <summary>代码上下文（RAG 注入，传给 ChatService 前映射为 System）</summary>
+    Context
 }

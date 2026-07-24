@@ -21,13 +21,16 @@ public static class ServiceCollectionExtensions
             client.BaseAddress = new Uri(chatCloud ? options.ChatCloudBaseUrl : options.OllamaBaseUrl);
             client.Timeout = TimeSpan.FromSeconds(120);
         });
-        services.AddSingleton<IChatService>(sp =>
+        services.AddSingleton(sp =>
         {
             var client = sp.GetRequiredService<IHttpClientFactory>().CreateClient("chat");
-            return chatCloud
+            var instance = (IChatService)(chatCloud
                 ? new OpenAICompatibleChatService(client, options.ChatCloudModel, options.ChatCloudApiKey)
-                : new OllamaChatService(client, options.OllamaChatModel);
+                : new OllamaChatService(client, options.OllamaChatModel));
+            return new BaseChatService(instance);
         });
+        services.AddSingleton<IChatService>(sp =>
+            sp.GetRequiredService<BaseChatService>().Instance);
 
         // ============ 向量化服务 ============
         bool embedCloud = options.EmbeddingProvider == "Cloud";
@@ -67,7 +70,7 @@ public static class ServiceCollectionExtensions
             var embedding = sp.GetRequiredService<IEmbeddingService>();
             var vectorStore = sp.GetRequiredService<IVectorStore>();
             var repository = sp.GetRequiredService<MemoryRepository>();
-            var chatService = sp.GetRequiredService<IChatService>();
+            var chatService = sp.GetRequiredService<BaseChatService>().Instance;
             var filter = sp.GetRequiredService<IMemoryFilter>();
             return new MemoryService(embedding, vectorStore, repository, chatService, filter, options.QdrantCollection);
         });

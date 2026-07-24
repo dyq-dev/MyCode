@@ -3,6 +3,7 @@ using System.Windows.Threading;
 using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Models;
 using AI.Assistant.Infrastructure.Services;
+using AI.Assistant.Infrastructure.Services.Chat;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -288,6 +289,29 @@ public partial class ConversationViewModel : ObservableObject
 
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
 
+            // 读取 RAG 注入信息（如果 ChatService 是 RagChatService）
+            if (_chatService is RagChatService rag)
+            {
+                var r = rag.LastRagResult;
+                if (r is { HasContext: true })
+                {
+                    assistantMessage.HasRagContext = true;
+                    var debug = r.DebugInfo;
+                    if (debug is not null)
+                    {
+                        assistantMessage.RagSummary =
+                            $"关键词={debug.MatchedKeyword ?? "—"}, " +
+                            $"{debug.ChunksUsedByBuilder} 个代码块, " +
+                            $"{debug.RetrievalElapsed.TotalMilliseconds:F0}ms";
+                    }
+                    else
+                    {
+                        assistantMessage.RagSummary = $"{r.ChunksUsed} 个代码块";
+                    }
+                    assistantMessage.RagContextText = r.ContextText ?? "";
+                }
+            }
+
             // 后台存储记忆并提取事实 + 更新会话摘要，不阻塞 UI
             if (_memory is not null)
             {
@@ -344,6 +368,18 @@ public partial class ChatMessageViewModel : ObservableObject
     /// <summary>显示时间（等待中显示秒数，完成后显示耗时）</summary>
     [ObservableProperty]
     private string _displayTime = string.Empty;
+
+    /// <summary>RAG 是否已注入上下文（仅 assistant 消息有效）</summary>
+    [ObservableProperty]
+    private bool _hasRagContext;
+
+    /// <summary>RAG 调试摘要文字</summary>
+    [ObservableProperty]
+    private string _ragSummary = "";
+
+    /// <summary>RAG 上下文原文（用于展开查看）</summary>
+    [ObservableProperty]
+    private string _ragContextText = "";
 
     public bool IsUser => Role == MessageRole.User;
     public bool IsAssistant => Role == MessageRole.Assistant;

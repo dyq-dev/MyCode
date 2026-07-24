@@ -20,6 +20,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ConversationViewModel? _currentConversation;
 
+    [ObservableProperty]
+    private bool _isPlaygroundMode;
+
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
 
     public MainViewModel(IChatService chatService, MemoryService? memory = null)
@@ -64,5 +67,11 @@ public partial class MainViewModel : ObservableObject
         {
             CurrentConversation = Conversations.FirstOrDefault();
         }
+    }
+
+    [RelayCommand]
+    private void TogglePlayground()
+    {
+        IsPlaygroundMode = !IsPlaygroundMode;
     }
 }

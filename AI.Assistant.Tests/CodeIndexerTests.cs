@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Infrastructure.Services.Rag.Indexing;
@@ -11,12 +12,13 @@ public class CodeIndexerTests
     private readonly FakeScanner _scanner = new();
     private readonly FakeIndexComparer _comparer = new();
     private readonly FakeChunkManager _chunkManager = new();
+    private readonly FakeEmbeddingService _embedding = new();
     private readonly FakeCodeIndexStore _store = new();
     private readonly CodeIndexer _indexer;
 
     public CodeIndexerTests()
     {
-        _indexer = new CodeIndexer(_scanner, _comparer, _chunkManager, _store);
+        _indexer = new CodeIndexer(_scanner, _comparer, _chunkManager, _embedding, _store);
     }
 
     private static CodeFile File(string path, string hash = "h")
@@ -377,6 +379,15 @@ public class CodeIndexerTests
         }
     }
 
+    private sealed class FakeEmbeddingService : IEmbeddingService
+    {
+        public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+            => Task.FromResult(new float[512]);
+
+        public Task<IList<float[]>> EmbedBatchAsync(IEnumerable<string> texts, CancellationToken ct = default)
+            => Task.FromResult<IList<float[]>>(texts.Select(_ => new float[512]).ToList());
+    }
+
     private sealed class FakeCodeIndexStore : ICodeIndexStore
     {
         public List<IndexFileRecord> IndexedFiles { get; set; } = [];
@@ -392,6 +403,15 @@ public class CodeIndexerTests
             if (FailSave)
                 throw new InvalidOperationException("Save failed");
             SavedChunks.AddRange(chunks);
+            return Task.CompletedTask;
+        }
+
+        public Task SaveChunksAsync(IEnumerable<EmbeddedChunk> chunks, CancellationToken ct = default)
+        {
+            ct.ThrowIfCancellationRequested();
+            if (FailSave)
+                throw new InvalidOperationException("Save failed");
+            SavedChunks.AddRange(chunks.Select(e => e.Chunk));
             return Task.CompletedTask;
         }
 

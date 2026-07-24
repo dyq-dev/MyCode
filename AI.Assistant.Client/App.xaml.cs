@@ -1,6 +1,9 @@
 using System.Windows;
 using AI.Assistant.Client.ViewModels;
+using AI.Assistant.Core.Rag.Context;
+using AI.Assistant.Core.Rag.Options;
 using AI.Assistant.Infrastructure.Extensions;
+using AI.Assistant.Infrastructure.Services.Rag.Context;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -10,6 +13,9 @@ namespace AI.Assistant.Client;
 public partial class App : Application
 {
     private readonly IHost _host;
+
+    /// <summary>DI 容器访问入口（供 UserControl 解析 ViewModel）</summary>
+    public static IServiceProvider Services => ((App)Current)._host.Services;
 
     public App()
     {
@@ -52,9 +58,19 @@ public partial class App : Application
                         ?? "Server=localhost;Database=AIAssistant;Trusted_Connection=True;TrustServerCertificate=True;";
                 });
 
+                // RAG 服务（装饰 ChatService，注入代码上下文）
+                services.AddRag(o =>
+                {
+                    o.EnableDebugInfo = true;
+                    o.EnableDebugLog = true;
+                    o.MinimumScoreThreshold = 0.3;
+                });
+                services.AddRagChatIntegration();
+
                 services.AddSingleton<MainViewModel>();
                 services.AddTransient<ConversationViewModel>();
                 services.AddSingleton<Views.MainWindow>();
+                services.AddSingleton<KnowledgePlaygroundViewModel>();
             })
             .Build();
     }

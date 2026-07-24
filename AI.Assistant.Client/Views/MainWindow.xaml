@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:views="clr-namespace:AI.Assistant.Client.Views"
         mc:Ignorable="d"
         Title="AI Assistant"
         Height="720" Width="1100"
@@ -27,6 +28,7 @@
                 BorderThickness="0,0,1,0">
             <Grid>
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
@@ -81,8 +83,48 @@
                     </Button>
                 </Border>
 
-                <!-- Conversation List -->
+                <!-- Knowledge Playground -->
                 <Border Grid.Row="2" Padding="8,0,8,8">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Background" Value="Transparent" />
+                            <Setter Property="CornerRadius" Value="8" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsPlaygroundMode}" Value="True">
+                                    <Setter Property="Background" Value="{StaticResource SidebarActiveBrush}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <Button Command="{Binding TogglePlaygroundCommand}"
+                            HorizontalAlignment="Stretch"
+                            Padding="0"
+                            Style="{StaticResource ConversationItemButton}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Border Background="{StaticResource SurfaceBrush}"
+                                    CornerRadius="6"
+                                    Width="22" Height="22"
+                                    VerticalAlignment="Center">
+                                <TextBlock Text="&#x1F50D;"
+                                           FontSize="11"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center" />
+                            </Border>
+                            <TextBlock Grid.Column="1"
+                                       Text="Knowledge Playground"
+                                       TextTrimming="CharacterEllipsis"
+                                       VerticalAlignment="Center"
+                                       Margin="6,0,0,0" />
+                        </Grid>
+                    </Button>
+                </Border>
+
+                <!-- Conversation List -->
+                <Border Grid.Row="3" Padding="8,0,8,8">
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding Conversations}">
@@ -158,7 +200,7 @@
                 </Border>
 
                 <!-- Footer -->
-                <Border Grid.Row="3"
+                <Border Grid.Row="4"
                         Padding="12,8"
                         BorderBrush="{StaticResource DividerBrush}"
                         BorderThickness="0,1,0,0">
@@ -179,16 +221,29 @@
                       Cursor="SizeWE" />
 
         <!-- ============================================
-             RIGHT - Chat Area
+             RIGHT - Content Area (Chat / Playground)
              ============================================ -->
         <Grid Grid.Column="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
 
-            <!-- Top Bar -->
+            <!-- ========== Chat Panel ========== -->
+            <Grid>
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Setter Property="Visibility" Value="Visible" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.IsPlaygroundMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <!-- Top Bar -->
             <Border Grid.Row="0"
                     Padding="20,14,20,14"
                     Background="{StaticResource WhiteBrush}"
@@ -297,6 +352,7 @@
                                                     <RowDefinition Height="Auto" />
                                                     <RowDefinition Height="8" />
                                                     <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
                                                 </Grid.RowDefinitions>
                                                 <StackPanel Orientation="Horizontal">
                                                     <Border Background="{StaticResource AccentBrush}"
@@ -320,6 +376,30 @@
                                                                Foreground="{StaticResource TextTertiaryBrush}"
                                                                VerticalAlignment="Center"
                                                                Margin="6,0,0,0" />
+
+                                                    <!-- RAG badge -->
+                                                    <Border CornerRadius="4"
+                                                            Padding="4,1,4,2"
+                                                            Margin="6,0,0,0"
+                                                            VerticalAlignment="Center"
+                                                            Background="#DBEAFE"
+                                                            BorderBrush="#93C5FD"
+                                                            BorderThickness="1">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding HasRagContext}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible" />
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <TextBlock Text="RAG"
+                                                                   FontSize="9"
+                                                                   FontWeight="Bold"
+                                                                   Foreground="#1D4ED8" />
+                                                    </Border>
                                                 </StackPanel>
                                                 <TextBlock Grid.Row="2"
                                                            Text="{Binding Content}"
@@ -327,6 +407,54 @@
                                                            FontSize="14"
                                                            LineHeight="22"
                                                            Foreground="{StaticResource TextPrimaryBrush}" />
+
+                                                <!-- RAG info (collapsible) -->
+                                                <Border Grid.Row="3" Margin="0,8,0,0"
+                                                        CornerRadius="8"
+                                                        Background="#F8FAFC"
+                                                        BorderBrush="#E2E8F0"
+                                                        BorderThickness="1"
+                                                        Padding="10">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasRagContext}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="RAG 上下文已注入"
+                                                                       FontSize="11"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#475569" />
+                                                            <TextBlock Text="{Binding RagSummary, StringFormat='  ·  {0}'}"
+                                                                       FontSize="11"
+                                                                       Foreground="#64748B"
+                                                                       VerticalAlignment="Center" />
+                                                        </StackPanel>
+                                                        <Border Grid.Row="1" Margin="0,6,0,0"
+                                                                CornerRadius="6"
+                                                                Background="#1E293B"
+                                                                Padding="10"
+                                                                MaxHeight="240">
+                                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                                <TextBlock Text="{Binding RagContextText}"
+                                                                           FontFamily="Cascadia Code, Consolas, monospace"
+                                                                           FontSize="11"
+                                                                           Foreground="#E2E8F0"
+                                                                           TextWrapping="Wrap" />
+                                                            </ScrollViewer>
+                                                        </Border>
+                                                    </Grid>
+                                                </Border>
                                             </Grid>
                                         </Border>
 
@@ -441,6 +569,22 @@
                     </Border>
                 </Grid>
             </Border>
+            </Grid>
+            <!-- ========== End Chat Panel ========== -->
+
+            <!-- ========== Playground Panel ========== -->
+            <views:KnowledgePlaygroundView>
+                <views:KnowledgePlaygroundView.Style>
+                    <Style TargetType="views:KnowledgePlaygroundView">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DataContext.IsPlaygroundMode, RelativeSource={RelativeSource AncestorType=Window}}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </views:KnowledgePlaygroundView.Style>
+            </views:KnowledgePlaygroundView>
         </Grid>
     </Grid>
 </Window>

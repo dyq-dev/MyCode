@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using AI.Assistant.Core.Interfaces;
+using AI.Assistant.Core.Rag;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
@@ -8,8 +9,14 @@ using Qdrant.Client.Grpc;
 
 namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 
+/// <summary>
+/// 代码索引存储器——基于 Qdrant（IVectorStore + IQdrantIndexStorage）持久化分块和索引记录。
+/// 每个代码块作为一个 Qdrant point 存储，附带完整的元数据；每个文件对应一条索引记录
+/// （_type = "index_record"），用于增量索引的比较和清理。
+/// </summary>
 public class CodeIndexStore : ICodeIndexStore
 {
+    // Qdrant 集合向量维度，需与 Embedding 模型输出维度一致
     private const int VectorSize = 512;
 
     private readonly IVectorStore _vectorStore;
@@ -23,7 +30,24 @@ public class CodeIndexStore : ICodeIndexStore
         _options = options;
     }
 
-    public async Task SaveChunksAsync(IEnumerable<CodeChunk> chunks, CancellationToken cancellationToken = default)
+    /// <summary>旧重载：接收原始 CodeChunk，内部填充零向量后委托给新重载</summary>
+    public Task SaveChunksAsync(IEnumerable<CodeChunk> chunks, CancellationToken cancellationToken = default)
+    {
+        var embedded = chunks.Select(c => new EmbeddedChunk
+        {
+            Chunk = c,
+            Vector = new float[VectorSize]
+        });
+
+        return SaveChunksAsync(embedded, cancellationToken);
+    }
+
+    /// <summary>
+    /// 新重载：保存一批已嵌入的代码分块。
+    /// 每个分块作为一个 Qdrant point 存入（含元数据），
+    /// 再按文件路径分组为每个文件创建/更新一条索引记录。
+    /// </summary>
+    public async Task SaveChunksAsync(IEnumerable<EmbeddedChunk> chunks, CancellationToken cancellationToken = default)
     {
         var collection = _options.QdrantCollectionName;
         await EnsureCollectionAsync(collection, cancellationToken);
@@ -32,31 +56,34 @@ public class CodeIndexStore : ICodeIndexStore
         if (chunksList.Count == 0)
             return;
 
-        foreach (var chunk in chunksList)
+        // 逐块写入 Qdrant：ID + 向量 + 元数据
+        foreach (var embedded in chunksList)
         {
+            var chunk = embedded.Chunk;
             var metadata = new Dictionary<string, string>
             {
-                ["_type"] = "chunk",
-                ["file_path"] = chunk.FilePath,
-                ["content"] = chunk.Content,
-                ["language"] = chunk.Language,
-                ["chunk_type"] = chunk.ChunkType.ToString(),
-                ["start_line"] = chunk.StartLine.ToString(),
-                ["end_line"] = chunk.EndLine.ToString(),
-                ["project_path"] = chunk.ProjectPath,
-                ["namespace"] = chunk.Namespace ?? "",
-                ["class_name"] = chunk.ClassName ?? "",
-                ["method_name"] = chunk.MethodName ?? "",
-                ["symbol_name"] = chunk.SymbolName ?? "",
-                ["indexed_at"] = chunk.IndexedAt.ToString("O")
+                [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
+                [CodeRagSchema.FieldFilePath] = chunk.FilePath,
+                [CodeRagSchema.FieldContent] = chunk.Content,
+                [CodeRagSchema.FieldLanguage] = chunk.Language,
+                [CodeRagSchema.FieldChunkType] = chunk.ChunkType.ToString(),
+                [CodeRagSchema.FieldStartLine] = chunk.StartLine.ToString(),
+                [CodeRagSchema.FieldEndLine] = chunk.EndLine.ToString(),
+                [CodeRagSchema.FieldProjectPath] = chunk.ProjectPath,
+                [CodeRagSchema.FieldNamespace] = chunk.Namespace ?? "",
+                [CodeRagSchema.FieldClassName] = chunk.ClassName ?? "",
+                [CodeRagSchema.FieldMethodName] = chunk.MethodName ?? "",
+                [CodeRagSchema.FieldSymbolName] = chunk.SymbolName ?? "",
+                [CodeRagSchema.FieldIndexedAt] = chunk.IndexedAt.ToString("O")
             };
 
-            await _vectorStore.UpsertAsync(collection, chunk.Id, new float[VectorSize], metadata, cancellationToken);
+            await _vectorStore.UpsertAsync(collection, chunk.Id, embedded.Vector, metadata, cancellationToken);
         }
 
+        // 按文件分组，每个文件创建一条索引记录（用于后续增量扫描对比）
         var now = DateTime.UtcNow;
         var groupedByFile = chunksList
-            .GroupBy(c => c.FilePath)
+            .GroupBy(c => c.Chunk.FilePath)
             .Select(g => new { FilePath = g.Key, IndexedAt = now });
 
         foreach (var group in groupedByFile)
@@ -64,12 +91,12 @@ public class CodeIndexStore : ICodeIndexStore
             var recordId = DeterministicId("idx_", group.FilePath);
             var recordMetadata = new Dictionary<string, string>
             {
-                ["_type"] = "index_record",
-                ["file_path"] = group.FilePath,
-                ["file_hash"] = "",
-                ["last_modified_at"] = "",
-                ["indexed_at"] = group.IndexedAt.ToString("O"),
-                ["project_path"] = chunksList.First(c => c.FilePath == group.FilePath).ProjectPath
+                [CodeRagSchema.FieldType] = CodeRagSchema.TypeIndexRecord,
+                [CodeRagSchema.FieldFilePath] = group.FilePath,
+                [CodeRagSchema.FieldFileHash] = "",
+                [CodeRagSchema.FieldLastModifiedAt] = "",
+                [CodeRagSchema.FieldIndexedAt] = group.IndexedAt.ToString("O"),
+                [CodeRagSchema.FieldProjectPath] = chunksList.First(c => c.Chunk.FilePath == group.FilePath).Chunk.ProjectPath
             };
 
             await _vectorStore.UpsertAsync(collection, recordId, new float[VectorSize], recordMetadata, cancellationToken);
@@ -79,15 +106,15 @@ public class CodeIndexStore : ICodeIndexStore
     public async Task DeleteChunksByFileAsync(string filePath, CancellationToken cancellationToken = default)
     {
         var collection = _options.QdrantCollectionName;
-        await DeleteByFilterAsync(collection, [("_type", "chunk"), ("file_path", filePath)], cancellationToken);
-        await DeleteByFilterAsync(collection, [("_type", "index_record"), ("file_path", filePath)], cancellationToken);
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeChunk), (CodeRagSchema.FieldFilePath, filePath)], cancellationToken);
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeIndexRecord), (CodeRagSchema.FieldFilePath, filePath)], cancellationToken);
     }
 
     public async Task DeleteProjectAsync(string projectPath, CancellationToken cancellationToken = default)
     {
         var collection = _options.QdrantCollectionName;
-        await DeleteByFilterAsync(collection, [("_type", "chunk"), ("project_path", projectPath)], cancellationToken);
-        await DeleteByFilterAsync(collection, [("_type", "index_record"), ("project_path", projectPath)], cancellationToken);
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeChunk), (CodeRagSchema.FieldProjectPath, projectPath)], cancellationToken);
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeIndexRecord), (CodeRagSchema.FieldProjectPath, projectPath)], cancellationToken);
     }
 
     public async Task<IList<IndexFileRecord>> GetIndexedFilesAsync(string projectPath, CancellationToken cancellationToken = default)
@@ -122,15 +149,15 @@ public class CodeIndexStore : ICodeIndexStore
         {
             Field = new FieldCondition
             {
-                Key = "_type",
-                Match = new Match { Keywords = new RepeatedStrings { Strings = { "index_record" } } }
+                Key = CodeRagSchema.FieldType,
+                Match = new Match { Keywords = new RepeatedStrings { Strings = { CodeRagSchema.TypeIndexRecord } } }
             }
         });
         filter.Must.Add(new Condition
         {
             Field = new FieldCondition
             {
-                Key = "project_path",
+                Key = CodeRagSchema.FieldProjectPath,
                 Match = new Match { Keywords = new RepeatedStrings { Strings = { projectPath } } }
             }
         });
@@ -142,10 +169,10 @@ public class CodeIndexStore : ICodeIndexStore
             var payload = point.Payload;
             return new IndexFileRecord
             {
-                FilePath = payload["file_path"].StringValue,
-                FileHash = payload["file_hash"].StringValue,
-                LastModifiedAt = TryParseDateTime(payload["last_modified_at"].StringValue),
-                IndexedAt = TryParseDateTime(payload["indexed_at"].StringValue)
+                FilePath = payload[CodeRagSchema.FieldFilePath].StringValue,
+                FileHash = payload[CodeRagSchema.FieldFileHash].StringValue,
+                LastModifiedAt = TryParseDateTime(payload[CodeRagSchema.FieldLastModifiedAt].StringValue),
+                IndexedAt = TryParseDateTime(payload[CodeRagSchema.FieldIndexedAt].StringValue)
             };
         }).ToList();
     }

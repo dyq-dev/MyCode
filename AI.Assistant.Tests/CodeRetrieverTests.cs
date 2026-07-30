@@ -9,7 +9,7 @@ namespace AI.Assistant.Tests;
 public class CodeRetrieverTests
 {
     private readonly FakeEmbeddingService _embedding = new();
-    private readonly FakeCodeQueryStore _queryStore = new();
+    private readonly FakeQueryStore _queryStore = new();
     private readonly RagOptions _options = new();
     private readonly CodeRetriever _retriever;
 
@@ -23,7 +23,7 @@ public class CodeRetrieverTests
     {
         _queryStore.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "code", Language = "csharp" },
                 Score = 0.9f
@@ -33,7 +33,8 @@ public class CodeRetrieverTests
         var results = await _retriever.VectorSearchAsync("how to DI", topK: 5);
 
         Assert.Single(results);
-        Assert.Equal("a.cs", results[0].Chunk.FilePath);
+        var codeChunk = Assert.IsType<CodeChunk>(results[0].Chunk);
+        Assert.Equal("a.cs", codeChunk.FilePath);
         Assert.Equal("how to DI", _embedding.LastQuery);
     }
 
@@ -85,12 +86,12 @@ public class CodeRetrieverTests
     {
         _queryStore.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "class A" },
                 Score = 0.9f
             },
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "b.cs", Content = "class B" },
                 Score = 0.7f
@@ -100,8 +101,10 @@ public class CodeRetrieverTests
         var results = await _retriever.VectorSearchAsync("query", topK: 10);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("a.cs", results[0].Chunk.FilePath);
-        Assert.Equal("b.cs", results[1].Chunk.FilePath);
+        var first = Assert.IsType<CodeChunk>(results[0].Chunk);
+        var second = Assert.IsType<CodeChunk>(results[1].Chunk);
+        Assert.Equal("a.cs", first.FilePath);
+        Assert.Equal("b.cs", second.FilePath);
     }
 
     [Fact]
@@ -131,14 +134,13 @@ public class CodeRetrieverTests
             => Task.FromResult<IList<float[]>>(texts.Select(_ => new float[512]).ToList());
     }
 
-    private sealed class FakeCodeQueryStore : ICodeQueryStore
+    private sealed class FakeQueryStore : IQueryStore
     {
-        public IList<RetrievedCodeChunk> Results { get; set; } = [];
+        public IList<RetrievedKnowledgeChunk> Results { get; set; } = [];
         public float[]? LastVector { get; private set; }
         public int LastTopK { get; private set; }
-        public string? LastQuery { get; set; }
 
-        public Task<IList<RetrievedCodeChunk>> SearchAsync(float[] queryVector, int topK = 5, CancellationToken cancellationToken = default)
+        public Task<IList<RetrievedKnowledgeChunk>> SearchAsync(float[] queryVector, int topK = 5, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             LastVector = queryVector;

@@ -16,8 +16,6 @@ using AI.Assistant.Infrastructure.Services.Rag.Workspace;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable CS0618 // 保留旧接口作为兼容层
-
 namespace AI.Assistant.Infrastructure.Extensions;
 
 public static class RagServiceCollectionExtensions
@@ -59,7 +57,6 @@ public static class RagServiceCollectionExtensions
     {
         services.AddSingleton<IQdrantIndexStorage, QdrantIndexStorage>();
         services.AddSingleton<CodeIndexStore>();
-        services.AddSingleton<ICodeIndexStore>(sp => sp.GetRequiredService<CodeIndexStore>());
         services.AddSingleton<IKnowledgeStore>(sp => sp.GetRequiredService<CodeIndexStore>());
         return services;
     }
@@ -67,7 +64,6 @@ public static class RagServiceCollectionExtensions
     public static IServiceCollection AddRagIndexing(this IServiceCollection services)
     {
         services.AddSingleton<CodeIndexer>();
-        services.AddSingleton<ICodeIndexer>(sp => sp.GetRequiredService<CodeIndexer>());
         services.AddSingleton<IIndexer>(sp => sp.GetRequiredService<CodeIndexer>());
         return services;
     }
@@ -75,10 +71,8 @@ public static class RagServiceCollectionExtensions
     public static IServiceCollection AddRagRetrieval(this IServiceCollection services)
     {
         services.AddSingleton<CodeQueryStore>();
-        services.AddSingleton<ICodeQueryStore>(sp => sp.GetRequiredService<CodeQueryStore>());
         services.AddSingleton<IQueryStore>(sp => sp.GetRequiredService<CodeQueryStore>());
         services.AddSingleton<CodeRetriever>();
-        services.AddSingleton<ICodeRetriever>(sp => sp.GetRequiredService<CodeRetriever>());
         services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<CodeRetriever>());
         services.AddSingleton<KnowledgeQueryStore>();
         return services;
@@ -113,6 +107,8 @@ public static class RagServiceCollectionExtensions
     public static IServiceCollection AddRagParsers(this IServiceCollection services)
     {
         services.AddSingleton<IDocumentParser, MarkdownParser>();
+        services.AddSingleton<IDocumentParser, TextParser>();
+        services.AddSingleton<IDocumentParser, PdfParser>();
         return services;
     }
 }

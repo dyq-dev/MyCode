@@ -16,6 +16,7 @@ public partial class ConversationViewModel : ObservableObject
 {
     private readonly IChatService? _chatService;
     private readonly MemoryService? _memory;
+    private readonly bool _showRagDetails;
     private readonly string _sessionId = Guid.NewGuid().ToString();
     private CancellationTokenSource? _streamCts;
     private readonly DispatcherTimer _timer;
@@ -63,10 +64,11 @@ public partial class ConversationViewModel : ObservableObject
         _typeTimer.Tick += TypeTimer_Tick;
     }
 
-    public ConversationViewModel(IChatService chatService, MemoryService? memory = null) : this()
+    public ConversationViewModel(IChatService chatService, MemoryService? memory = null, bool showRagDetails = true) : this()
     {
         _chatService = chatService;
         _memory = memory;
+        _showRagDetails = showRagDetails;
     }
 
     /// <summary>
@@ -290,7 +292,7 @@ public partial class ConversationViewModel : ObservableObject
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
 
             // 读取 RAG 注入信息（如果 ChatService 是 RagChatService）
-            if (_chatService is RagChatService rag)
+            if (_showRagDetails && _chatService is RagChatService rag)
             {
                 var r = rag.LastRagResult;
                 if (r is { HasContext: true })

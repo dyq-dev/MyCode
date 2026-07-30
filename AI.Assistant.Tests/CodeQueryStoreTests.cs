@@ -32,10 +32,12 @@ public class CodeQueryStoreTests
         var results = await _store.SearchAsync(new float[512], topK: 5);
 
         Assert.Equal(2, results.Count);
-        Assert.Equal("a.cs", results[0].Chunk.FilePath);
-        Assert.Equal("class A { }", results[0].Chunk.Content);
+        var first = Assert.IsType<CodeChunk>(results[0].Chunk);
+        var second = Assert.IsType<CodeChunk>(results[1].Chunk);
+        Assert.Equal("a.cs", first.FilePath);
+        Assert.Equal("class A { }", first.Content);
         Assert.Equal(0.95f, results[0].Score);
-        Assert.Equal("b.cs", results[1].Chunk.FilePath);
+        Assert.Equal("b.cs", second.FilePath);
         Assert.Equal(0.80f, results[1].Score);
     }
 
@@ -105,18 +107,18 @@ public class CodeQueryStoreTests
 
         var results = await _store.SearchAsync(new float[512], topK: 1);
 
-        var chunk = results[0].Chunk;
-        Assert.Equal("chunk1", chunk.Id);
-        Assert.Equal("test.cs", chunk.FilePath);
-        Assert.Equal("var x = 1;", chunk.Content);
-        Assert.Equal("csharp", chunk.Language);
-        Assert.Equal(CodeChunkType.File, chunk.ChunkType);
-        Assert.Equal(1, chunk.StartLine);
-        Assert.Equal(5, chunk.EndLine);
-        Assert.Equal(@"D:\proj", chunk.ProjectPath);
-        Assert.Equal("MyApp", chunk.Namespace);
-        Assert.Equal("Program", chunk.ClassName);
-        Assert.Equal("Main", chunk.MethodName);
+        var codeChunk = Assert.IsType<CodeChunk>(results[0].Chunk);
+        Assert.Equal("chunk1", codeChunk.Id);
+        Assert.Equal("test.cs", codeChunk.FilePath);
+        Assert.Equal("var x = 1;", codeChunk.Content);
+        Assert.Equal("csharp", codeChunk.Language);
+        Assert.Equal(CodeChunkType.File, codeChunk.ChunkType);
+        Assert.Equal(1, codeChunk.StartLine);
+        Assert.Equal(5, codeChunk.EndLine);
+        Assert.Equal(@"D:\proj", codeChunk.ProjectPath);
+        Assert.Equal("MyApp", codeChunk.Namespace);
+        Assert.Equal("Program", codeChunk.ClassName);
+        Assert.Equal("Main", codeChunk.MethodName);
     }
 
     [Fact]

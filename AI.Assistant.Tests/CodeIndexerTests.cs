@@ -13,7 +13,7 @@ public class CodeIndexerTests
     private readonly FakeIndexComparer _comparer = new();
     private readonly FakeChunkManager _chunkManager = new();
     private readonly FakeEmbeddingService _embedding = new();
-    private readonly FakeCodeIndexStore _store = new();
+    private readonly FakeKnowledgeStore _store = new();
     private readonly CodeIndexer _indexer;
 
     public CodeIndexerTests()
@@ -37,7 +37,7 @@ public class CodeIndexerTests
     {
         _scanner.Files = [File("a.cs"), File("b.cs")];
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.True(result.Success);
         Assert.Equal(2, result.FilesScanned);
@@ -52,7 +52,7 @@ public class CodeIndexerTests
         _store.IndexedFiles.Add(Record("a.cs"));
         _store.IndexedFiles.Add(Record("old.cs"));
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.True(result.Success);
         Assert.Equal(1, result.FilesDeleted);
@@ -62,7 +62,7 @@ public class CodeIndexerTests
     [Fact]
     public async Task IndexProjectAsync_EmptyProject()
     {
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.True(result.Success);
         Assert.Equal(0, result.FilesScanned);
@@ -75,7 +75,7 @@ public class CodeIndexerTests
         _scanner.Files = [File("good.cs"), File("bad.cs")];
         _chunkManager.FailFor = ["bad.cs"];
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.Equal(1, result.FilesFailed);
         Assert.Single(result.Errors);
@@ -90,7 +90,7 @@ public class CodeIndexerTests
         _scanner.Files = [File("a.cs")];
         _store.FailGetIndexedFiles = true;
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.True(result.Success);
         Assert.Equal(1, result.ChunksCreated);
@@ -104,7 +104,7 @@ public class CodeIndexerTests
     {
         _scanner.ThrowOnScan = true;
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.False(result.Success);
         Assert.Single(result.Errors);
@@ -117,7 +117,7 @@ public class CodeIndexerTests
         _scanner.Files = [File("a.cs")];
         _store.FailSave = true;
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.False(result.Success);
         Assert.Contains("Save failed", result.Errors[0]);
@@ -280,7 +280,7 @@ public class CodeIndexerTests
         cts.Cancel();
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
-            _indexer.IndexProjectAsync(ProjectPath, cts.Token));
+            _indexer.IndexSourceAsync(ProjectPath, cts.Token));
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class CodeIndexerTests
     {
         _scanner.Files = [File("a.cs")];
 
-        var result = await _indexer.IndexProjectAsync(ProjectPath);
+        var result = await _indexer.IndexSourceAsync(ProjectPath);
 
         Assert.True(result.Duration.TotalMilliseconds > 0);
     }
@@ -388,7 +388,7 @@ public class CodeIndexerTests
             => Task.FromResult<IList<float[]>>(texts.Select(_ => new float[512]).ToList());
     }
 
-    private sealed class FakeCodeIndexStore : ICodeIndexStore
+    private sealed class FakeKnowledgeStore : IKnowledgeStore
     {
         public List<IndexFileRecord> IndexedFiles { get; set; } = [];
         public List<CodeChunk> SavedChunks { get; } = [];
@@ -397,21 +397,18 @@ public class CodeIndexerTests
         public bool FailSave { get; set; }
         public HashSet<string> FailDeleteFor { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-        public Task SaveChunksAsync(IEnumerable<CodeChunk> chunks, CancellationToken ct = default)
+        public Task SaveChunksAsync(IEnumerable<IKnowledgeChunk> chunks, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
             if (FailSave)
                 throw new InvalidOperationException("Save failed");
-            SavedChunks.AddRange(chunks);
+            SavedChunks.AddRange(chunks.Cast<CodeChunk>());
             return Task.CompletedTask;
         }
 
-        public Task SaveChunksAsync(IEnumerable<EmbeddedChunk> chunks, CancellationToken ct = default)
+        public Task DeleteChunksBySourceAsync(string sourceId, CancellationToken ct = default)
         {
             ct.ThrowIfCancellationRequested();
-            if (FailSave)
-                throw new InvalidOperationException("Save failed");
-            SavedChunks.AddRange(chunks.Select(e => e.Chunk));
             return Task.CompletedTask;
         }
 

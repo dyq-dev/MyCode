@@ -2,29 +2,22 @@ using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 
-#pragma warning disable CS0618 // 保留旧接口作为兼容层
-
 namespace AI.Assistant.Infrastructure.Services.Rag.Indexing;
 
-/// <summary>
-/// 代码索引器：将扫描、分块、嵌入、存储、清理串联为完整索引流程。
-/// IndexProjectAsync 执行全量重建（先全部写入，再清理脏数据）；
-/// IncrementalIndexAsync 执行增量更新（对比差异，只处理变更文件）。
-/// </summary>
-public class CodeIndexer : ICodeIndexer, IIndexer
+public class CodeIndexer : IIndexer
 {
     private readonly IProjectScanner _scanner;
     private readonly IIndexComparer _comparer;
     private readonly IChunkManager _chunkManager;
     private readonly IEmbeddingService _embedding;
-    private readonly ICodeIndexStore _store;
+    private readonly IKnowledgeStore _store;
 
     public CodeIndexer(
         IProjectScanner scanner,
         IIndexComparer comparer,
         IChunkManager chunkManager,
         IEmbeddingService embedding,
-        ICodeIndexStore store)
+        IKnowledgeStore store)
     {
         _scanner = scanner;
         _comparer = comparer;
@@ -33,16 +26,15 @@ public class CodeIndexer : ICodeIndexer, IIndexer
         _store = store;
     }
 
-    public async Task<IndexResult> IndexProjectAsync(string projectPath, CancellationToken cancellationToken = default)
+    public async Task<IndexResult> IndexSourceAsync(string sourceUri, CancellationToken cancellationToken = default)
     {
         var startedAt = DateTime.UtcNow;
         var result = new IndexResult();
 
-        // [1] 扫描项目文件
         IList<CodeFile> scannedFiles;
         try
         {
-            scannedFiles = await _scanner.ScanProjectAsync(projectPath, cancellationToken);
+            scannedFiles = await _scanner.ScanProjectAsync(sourceUri, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -55,9 +47,8 @@ public class CodeIndexer : ICodeIndexer, IIndexer
         cancellationToken.ThrowIfCancellationRequested();
         result.FilesScanned = scannedFiles.Count;
 
-        // [2] 逐个文件分块 → 批量嵌入 → 收集 EmbeddedChunk
-        var allEmbedded = new List<EmbeddedChunk>();
-        var scannedPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var allChunks = new List<IKnowledgeChunk>();
+        var codeChunkPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in scannedFiles)
         {
@@ -66,39 +57,33 @@ public class CodeIndexer : ICodeIndexer, IIndexer
             try
             {
                 var chunks = await _chunkManager
-                    .ChunkAsync(file, projectPath, cancellationToken)
+                    .ChunkAsync(file, sourceUri, cancellationToken)
                     .ToListAsync(cancellationToken);
 
-                var vectors = await _embedding.EmbedBatchAsync(
-                    chunks.Select(c => c.Content), cancellationToken);
+                foreach (var chunk in chunks)
+                    allChunks.Add(chunk);
 
-                foreach (var (chunk, vector) in chunks.Zip(vectors))
-                {
-                    allEmbedded.Add(new EmbeddedChunk { Chunk = chunk, Vector = vector });
-                }
-
-                scannedPaths.Add(file.FilePath);
+                codeChunkPaths.Add(file.FilePath);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 result.FilesFailed++;
-                result.Errors.Add($"分块/嵌入失败 '{file.FilePath}': {ex.Message}");
+                result.Errors.Add($"分块失败 '{file.FilePath}': {ex.Message}");
             }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [3] 一次性保存所有带向量的分块
-        if (allEmbedded.Count > 0)
+        if (allChunks.Count > 0)
         {
             try
             {
-                await _store.SaveChunksAsync(allEmbedded, cancellationToken);
+                await _store.SaveChunksAsync(allChunks, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 result.Success = false;
-                result.Errors.Add($"保存失败（已分块 {allEmbedded.Count} 个）: {ex.Message}");
+                result.Errors.Add($"保存失败（已分块 {allChunks.Count} 个）: {ex.Message}");
                 result.Duration = DateTime.UtcNow - startedAt;
                 return result;
             }
@@ -106,16 +91,15 @@ public class CodeIndexer : ICodeIndexer, IIndexer
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [4] 清理已被删除的陈旧文件（尽力而为，不阻断流程）
         try
         {
-            var indexedRecords = await _store.GetIndexedFilesAsync(projectPath, cancellationToken);
+            var indexedRecords = await _store.GetIndexedFilesAsync(sourceUri, cancellationToken);
 
             foreach (var record in indexedRecords)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                if (!scannedPaths.Contains(record.FilePath))
+                if (!codeChunkPaths.Contains(record.FilePath))
                 {
                     try
                     {
@@ -135,27 +119,20 @@ public class CodeIndexer : ICodeIndexer, IIndexer
         }
 
         result.Success = result.FilesFailed == 0;
-        result.ChunksCreated = allEmbedded.Count;
+        result.ChunksCreated = allChunks.Count;
         result.Duration = DateTime.UtcNow - startedAt;
         return result;
     }
 
-    async Task<IndexResult> IIndexer.IndexSourceAsync(string sourceUri, CancellationToken cancellationToken)
-    {
-        return await IndexProjectAsync(sourceUri, cancellationToken);
-    }
-
-    /// <summary>增量索引：扫描 → 对比 → 删除旧数据 → 分块+嵌入 → 存储</summary>
-    public async Task<IndexResult> IncrementalIndexAsync(string projectPath, CancellationToken cancellationToken = default)
+    public async Task<IndexResult> IncrementalIndexAsync(string sourceUri, CancellationToken cancellationToken = default)
     {
         var startedAt = DateTime.UtcNow;
         var result = new IndexResult();
 
-        // [1] 扫描项目文件
         IList<CodeFile> scannedFiles;
         try
         {
-            scannedFiles = await _scanner.ScanProjectAsync(projectPath, cancellationToken);
+            scannedFiles = await _scanner.ScanProjectAsync(sourceUri, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -168,11 +145,10 @@ public class CodeIndexer : ICodeIndexer, IIndexer
         cancellationToken.ThrowIfCancellationRequested();
         result.FilesScanned = scannedFiles.Count;
 
-        // [2] 获取已有索引记录
         IList<IndexFileRecord> indexedRecords;
         try
         {
-            indexedRecords = await _store.GetIndexedFilesAsync(projectPath, cancellationToken);
+            indexedRecords = await _store.GetIndexedFilesAsync(sourceUri, cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -184,7 +160,6 @@ public class CodeIndexer : ICodeIndexer, IIndexer
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [3] 对比扫描结果与索引记录，得到变更集
         var changeSet = _comparer.Compare(scannedFiles, indexedRecords);
         result.FilesAdded = changeSet.Added.Count;
         result.FilesModified = changeSet.Modified.Count;
@@ -198,7 +173,6 @@ public class CodeIndexer : ICodeIndexer, IIndexer
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [4] 先删除被修改文件的旧分块（重嵌入前清理）
         var failedDeletePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var file in changeSet.Modified)
@@ -217,7 +191,6 @@ public class CodeIndexer : ICodeIndexer, IIndexer
             }
         }
 
-        // [5] 删除已移除文件的索引数据
         foreach (var record in changeSet.Deleted)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -236,8 +209,7 @@ public class CodeIndexer : ICodeIndexer, IIndexer
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [6] 对新文件和已修改文件进行分块 + 嵌入（跳过删除失败的文件）
-        var allEmbedded = new List<EmbeddedChunk>();
+        var newChunks = new List<IKnowledgeChunk>();
 
         foreach (var file in changeSet.Added.Concat(changeSet.Modified))
         {
@@ -249,44 +221,37 @@ public class CodeIndexer : ICodeIndexer, IIndexer
             try
             {
                 var chunks = await _chunkManager
-                    .ChunkAsync(file, projectPath, cancellationToken)
+                    .ChunkAsync(file, sourceUri, cancellationToken)
                     .ToListAsync(cancellationToken);
 
-                var vectors = await _embedding.EmbedBatchAsync(
-                    chunks.Select(c => c.Content), cancellationToken);
-
-                foreach (var (chunk, vector) in chunks.Zip(vectors))
-                {
-                    allEmbedded.Add(new EmbeddedChunk { Chunk = chunk, Vector = vector });
-                }
+                newChunks.AddRange(chunks);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 result.FilesFailed++;
-                result.Errors.Add($"分块/嵌入失败 '{file.FilePath}': {ex.Message}");
+                result.Errors.Add($"分块失败 '{file.FilePath}': {ex.Message}");
             }
         }
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // [7] 批量保存新的带向量分块
-        if (allEmbedded.Count > 0)
+        if (newChunks.Count > 0)
         {
             try
             {
-                await _store.SaveChunksAsync(allEmbedded, cancellationToken);
+                await _store.SaveChunksAsync(newChunks, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 result.Success = false;
-                result.Errors.Add($"保存失败（已分块 {allEmbedded.Count} 个）: {ex.Message}");
+                result.Errors.Add($"保存失败（已分块 {newChunks.Count} 个）: {ex.Message}");
                 result.Duration = DateTime.UtcNow - startedAt;
                 return result;
             }
         }
 
         result.Success = result.FilesFailed == 0;
-        result.ChunksCreated = allEmbedded.Count;
+        result.ChunksCreated = newChunks.Count;
         result.Duration = DateTime.UtcNow - startedAt;
         return result;
     }

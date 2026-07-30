@@ -7,18 +7,10 @@ using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using Qdrant.Client.Grpc;
 
-#pragma warning disable CS0618 // 保留旧接口作为兼容层
-
 namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 
-/// <summary>
-/// 代码索引存储器——基于 Qdrant（IVectorStore + IQdrantIndexStorage）持久化分块和索引记录。
-/// 每个代码块作为一个 Qdrant point 存储，附带完整的元数据；每个文件对应一条索引记录
-/// （_type = "index_record"），用于增量索引的比较和清理。
-/// </summary>
-public class CodeIndexStore : ICodeIndexStore, IKnowledgeStore
+public class CodeIndexStore : IKnowledgeStore
 {
-    // Qdrant 集合向量维度，需与 Embedding 模型输出维度一致
     private const int VectorSize = 512;
 
     private readonly IVectorStore _vectorStore;
@@ -34,63 +26,87 @@ public class CodeIndexStore : ICodeIndexStore, IKnowledgeStore
         _embeddingService = embeddingService;
     }
 
-    /// <summary>旧重载：接收原始 CodeChunk，内部填充零向量后委托给新重载</summary>
-    public Task SaveChunksAsync(IEnumerable<CodeChunk> chunks, CancellationToken cancellationToken = default)
+    public async Task SaveChunksAsync(
+        IEnumerable<IKnowledgeChunk> chunks,
+        CancellationToken cancellationToken = default)
     {
-        var embedded = chunks.Select(c => new EmbeddedChunk
-        {
-            Chunk = c,
-            Vector = new float[VectorSize]
-        });
-
-        return SaveChunksAsync(embedded, cancellationToken);
-    }
-
-    /// <summary>
-    /// 新重载：保存一批已嵌入的代码分块。
-    /// 每个分块作为一个 Qdrant point 存入（含元数据），
-    /// 再按文件路径分组为每个文件创建/更新一条索引记录。
-    /// </summary>
-    public async Task SaveChunksAsync(IEnumerable<EmbeddedChunk> chunks, CancellationToken cancellationToken = default)
-    {
-        var collection = _options.QdrantCollectionName;
-        await EnsureCollectionAsync(collection, cancellationToken);
-
         var chunksList = chunks.ToList();
         if (chunksList.Count == 0)
             return;
 
-        // 逐块写入 Qdrant：ID + 向量 + 元数据
-        foreach (var embedded in chunksList)
-        {
-            var chunk = embedded.Chunk;
-            var metadata = new Dictionary<string, string>
-            {
-                [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
-                [CodeRagSchema.FieldSourceId] = chunk.SourceId,
-                [CodeRagSchema.FieldSourceType] = CodeRagSchema.SourceTypeCode,
-                [CodeRagSchema.FieldSourceUri] = chunk.ProjectPath,
-                [CodeRagSchema.FieldFilePath] = chunk.FilePath,
-                [CodeRagSchema.FieldContent] = chunk.Content,
-                [CodeRagSchema.FieldLanguage] = chunk.Language,
-                [CodeRagSchema.FieldChunkType] = chunk.ChunkType.ToString(),
-                [CodeRagSchema.FieldStartLine] = chunk.StartLine.ToString(),
-                [CodeRagSchema.FieldEndLine] = chunk.EndLine.ToString(),
-                [CodeRagSchema.FieldProjectPath] = chunk.ProjectPath,
-                [CodeRagSchema.FieldNamespace] = chunk.Namespace ?? "",
-                [CodeRagSchema.FieldClassName] = chunk.ClassName ?? "",
-                [CodeRagSchema.FieldMethodName] = chunk.MethodName ?? "",
-                [CodeRagSchema.FieldSymbolName] = chunk.SymbolName ?? "",
-                [CodeRagSchema.FieldIndexedAt] = chunk.IndexedAt.ToString("O")
-            };
+        var collection = _options.QdrantCollectionName;
+        await EnsureCollectionAsync(collection, cancellationToken);
 
-            await _vectorStore.UpsertAsync(collection, chunk.Id, embedded.Vector, metadata, cancellationToken);
+        const int maxChars = 500;
+        var embedResults = await _embeddingService.EmbedBatchAsync(
+            chunksList.Select(c => c.Content.Length > maxChars ? c.Content[..maxChars] : c.Content),
+            cancellationToken);
+
+        for (int i = 0; i < chunksList.Count; i++)
+        {
+            var chunk = chunksList[i];
+            var vector = i < embedResults.Count ? embedResults[i] : new float[VectorSize];
+
+            if (chunk is CodeChunk codeChunk)
+            {
+                var metadata = new Dictionary<string, string>
+                {
+                    [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
+                    [CodeRagSchema.FieldSourceId] = codeChunk.SourceId,
+                    [CodeRagSchema.FieldSourceType] = CodeRagSchema.SourceTypeCode,
+                    [CodeRagSchema.FieldSourceUri] = codeChunk.ProjectPath,
+                    [CodeRagSchema.FieldFilePath] = codeChunk.FilePath,
+                    [CodeRagSchema.FieldContent] = codeChunk.Content,
+                    [CodeRagSchema.FieldLanguage] = codeChunk.Language,
+                    [CodeRagSchema.FieldChunkType] = codeChunk.ChunkType.ToString(),
+                    [CodeRagSchema.FieldStartLine] = codeChunk.StartLine.ToString(),
+                    [CodeRagSchema.FieldEndLine] = codeChunk.EndLine.ToString(),
+                    [CodeRagSchema.FieldProjectPath] = codeChunk.ProjectPath,
+                    [CodeRagSchema.FieldIndexedAt] = codeChunk.IndexedAt.ToString("O")
+                };
+
+                metadata[CodeRagSchema.FieldNamespace] = codeChunk.Namespace ?? "";
+                metadata[CodeRagSchema.FieldClassName] = codeChunk.ClassName ?? "";
+                metadata[CodeRagSchema.FieldMethodName] = codeChunk.MethodName ?? "";
+                metadata[CodeRagSchema.FieldSymbolName] = codeChunk.SymbolName ?? "";
+
+                await _vectorStore.UpsertAsync(collection, codeChunk.Id, vector, metadata, cancellationToken);
+            }
+            else
+            {
+                var sourceTypeStr = chunk.SourceType switch
+                {
+                    SourceType.Code => CodeRagSchema.SourceTypeCode,
+                    SourceType.Document or SourceType.Markdown or SourceType.Text => CodeRagSchema.SourceTypeDocument,
+                    _ => "unknown"
+                };
+
+                var metadata = new Dictionary<string, string>
+                {
+                    [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
+                    [CodeRagSchema.FieldSourceId] = chunk.SourceId,
+                    [CodeRagSchema.FieldSourceType] = sourceTypeStr,
+                    [CodeRagSchema.FieldSourceUri] = chunk.SourceUri,
+                    [CodeRagSchema.FieldContent] = chunk.Content,
+                    [CodeRagSchema.FieldProjectPath] = chunk.ProjectPath,
+                    [CodeRagSchema.FieldIndexedAt] = chunk.IndexedAt.ToString("O")
+                };
+
+                foreach (var kv in chunk.Metadata)
+                    metadata[kv.Key] = kv.Value;
+
+                await _vectorStore.UpsertAsync(collection, chunk.Id, vector, metadata, cancellationToken);
+            }
         }
 
-        // 按文件分组，每个文件创建一条索引记录（用于后续增量扫描对比）
+        // Index records only for CodeChunks (file-level tracking)
+        var codeChunks = chunksList.OfType<CodeChunk>().ToList();
+        if (codeChunks.Count == 0)
+            return;
+
         var now = DateTime.UtcNow;
-        var groupedByFile = chunksList
-            .GroupBy(c => c.Chunk.FilePath)
+        var groupedByFile = codeChunks
+            .GroupBy(c => c.FilePath)
             .Select(g => new { FilePath = g.Key, IndexedAt = now });
 
         foreach (var group in groupedByFile)
@@ -103,7 +119,7 @@ public class CodeIndexStore : ICodeIndexStore, IKnowledgeStore
                 [CodeRagSchema.FieldFileHash] = "",
                 [CodeRagSchema.FieldLastModifiedAt] = "",
                 [CodeRagSchema.FieldIndexedAt] = group.IndexedAt.ToString("O"),
-                [CodeRagSchema.FieldProjectPath] = chunksList.First(c => c.Chunk.FilePath == group.FilePath).Chunk.ProjectPath
+                [CodeRagSchema.FieldProjectPath] = codeChunks.First(c => c.FilePath == group.FilePath).ProjectPath
             };
 
             await _vectorStore.UpsertAsync(collection, recordId, new float[VectorSize], recordMetadata, cancellationToken);
@@ -117,60 +133,7 @@ public class CodeIndexStore : ICodeIndexStore, IKnowledgeStore
         await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeIndexRecord), (CodeRagSchema.FieldFilePath, filePath)], cancellationToken);
     }
 
-    async Task IKnowledgeStore.SaveChunksAsync(IEnumerable<IKnowledgeChunk> chunks, CancellationToken cancellationToken)
-    {
-        var chunksList = chunks.ToList();
-        if (chunksList.Count == 0)
-            return;
-
-        // Fast path: all are CodeChunks → delegate to existing code path
-        if (chunksList.All(c => c is CodeChunk))
-        {
-            await SaveChunksAsync(chunksList.Cast<CodeChunk>(), cancellationToken);
-            return;
-        }
-
-        // Generic path: embed and save any IKnowledgeChunk
-        var collection = _options.QdrantCollectionName;
-        await EnsureCollectionAsync(collection, cancellationToken);
-
-        var embedResults = await _embeddingService.EmbedBatchAsync(
-            chunksList.Select(c => c.Content), cancellationToken);
-
-        for (int i = 0; i < chunksList.Count; i++)
-        {
-            var chunk = chunksList[i];
-            var vector = i < embedResults.Count ? embedResults[i] : new float[512];
-
-            var sourceTypeStr = chunk.SourceType switch
-            {
-                SourceType.Code => CodeRagSchema.SourceTypeCode,
-                SourceType.Document or SourceType.Markdown or SourceType.Text => CodeRagSchema.SourceTypeDocument,
-                _ => "unknown"
-            };
-
-            var metadata = new Dictionary<string, string>
-            {
-                [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
-                [CodeRagSchema.FieldSourceId] = chunk.SourceId,
-                [CodeRagSchema.FieldSourceType] = sourceTypeStr,
-                [CodeRagSchema.FieldSourceUri] = chunk.SourceUri,
-                [CodeRagSchema.FieldContent] = chunk.Content,
-                [CodeRagSchema.FieldProjectPath] = chunk.ProjectPath,
-                [CodeRagSchema.FieldIndexedAt] = chunk.IndexedAt.ToString("O")
-            };
-
-            // Copy all Metadata dictionary entries
-            foreach (var kv in chunk.Metadata)
-            {
-                metadata[kv.Key] = kv.Value;
-            }
-
-            await _vectorStore.UpsertAsync(collection, chunk.Id, vector, metadata, cancellationToken);
-        }
-    }
-
-    async Task IKnowledgeStore.DeleteChunksBySourceAsync(string sourceId, CancellationToken cancellationToken)
+    public async Task DeleteChunksBySourceAsync(string sourceId, CancellationToken cancellationToken = default)
     {
         var collection = _options.QdrantCollectionName;
         await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeChunk), (CodeRagSchema.FieldSourceId, sourceId)], cancellationToken);

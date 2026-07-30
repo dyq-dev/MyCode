@@ -1,12 +1,12 @@
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using AI.Assistant.Client.ViewModels;
-using AI.Assistant.Core.Rag.Context;
+using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
-using AI.Assistant.Core.Rag.Options;
 using AI.Assistant.Infrastructure.Extensions;
-using AI.Assistant.Infrastructure.Services.Rag.Context;
+using AI.Assistant.Infrastructure.Services;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -17,7 +17,6 @@ public partial class App : Application
 {
     private readonly IHost _host;
 
-    /// <summary>DI 容器访问入口（供 UserControl 解析 ViewModel）</summary>
     public static IServiceProvider Services => ((App)Current)._host.Services;
 
     public App()
@@ -35,33 +34,23 @@ public partial class App : Application
 
                 services.AddInfrastructure(options =>
                 {
-                    // Provider 选择
                     options.ChatProvider = c["LLM:ChatProvider"] ?? "Ollama";
                     options.EmbeddingProvider = c["LLM:EmbeddingProvider"] ?? "Ollama";
-
-                    // Ollama 本地
                     options.OllamaBaseUrl = c["LLM:Ollama:BaseUrl"] ?? "http://localhost:11434";
                     options.OllamaChatModel = c["LLM:Ollama:ChatModel"] ?? "gemma3:1b";
                     options.OllamaEmbeddingModel = c["LLM:Ollama:EmbeddingModel"] ?? "";
-
-                    // Chat 云端（独立厂商/Key）
                     options.ChatCloudBaseUrl = c["LLM:Cloud:BaseUrl"] ?? "";
                     options.ChatCloudApiKey = c["LLM:Cloud:ApiKey"] ?? "";
                     options.ChatCloudModel = c["LLM:Cloud:Model"] ?? "";
-
-                    // Embedding 云端（独立厂商/Key）
                     options.EmbeddingCloudBaseUrl = c["LLM:EmbeddingCloud:BaseUrl"] ?? "";
                     options.EmbeddingCloudApiKey = c["LLM:EmbeddingCloud:ApiKey"] ?? "";
                     options.EmbeddingCloudModel = c["LLM:EmbeddingCloud:Model"] ?? "";
-
-                    // Qdrant
                     options.QdrantBaseUrl = c["Qdrant:BaseUrl"] ?? "http://localhost:6333";
                     options.QdrantCollection = c["Qdrant:Collection"] ?? "memories";
                     options.SqlConnectionString = c["Sql:ConnectionString"]
                         ?? "Server=localhost;Database=AIAssistant;Trusted_Connection=True;TrustServerCertificate=True;";
                 });
 
-                // RAG 服务（装饰 ChatService，注入代码上下文）
                 services.AddRag(o =>
                 {
                     o.EnableDebugInfo = true;
@@ -72,7 +61,18 @@ public partial class App : Application
                 });
                 services.AddRagChatIntegration();
 
-                services.AddSingleton<MainViewModel>();
+                var isDevMode = string.Equals(c["DevMode"], "true", StringComparison.OrdinalIgnoreCase);
+
+                services.AddSingleton<MainViewModel>(sp =>
+                {
+                    var chatService = sp.GetRequiredService<IChatService>();
+                    var workspace = sp.GetRequiredService<IWorkspaceManager>();
+                    var parsers = sp.GetRequiredService<IEnumerable<IDocumentParser>>();
+                    var knowledgeStore = sp.GetRequiredService<IKnowledgeStore>();
+                    var indexer = sp.GetRequiredService<IIndexer>();
+                    var memory = sp.GetService<MemoryService>();
+                    return new MainViewModel(chatService, workspace, parsers, knowledgeStore, indexer, memory, isDevMode);
+                });
                 services.AddTransient<ConversationViewModel>();
                 services.AddSingleton<Views.MainWindow>();
                 services.AddSingleton<KnowledgePlaygroundViewModel>();
@@ -83,41 +83,15 @@ public partial class App : Application
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        _host.Start();
 
-        // 自动注册当前项目为 KnowledgeSource（暂未启用）
-        //try
-        //{
-        //    var workspace = _host.Services.GetRequiredService<IWorkspaceManager>();
-        //    var options = _host.Services.GetRequiredService<RagOptions>();
-        //    var projectPath = options.ProjectPath;
-        //    if (string.IsNullOrEmpty(projectPath))
-        //        projectPath = Environment.CurrentDirectory;
-        //
-        //    if (workspace.GetSourceByUri(projectPath) is null)
-        //    {
-        //        workspace.AddSource(new KnowledgeSource
-        //        {
-        //            Name = "当前项目",
-        //            SourceType = SourceType.Code,
-        //            Uri = projectPath,
-        //            AutoSync = true,
-        //            IndexStatus = "未索引"
-        //        });
-        //    }
-        //}
-        //catch (Exception ex)
-        //{
-        //    System.Diagnostics.Debug.WriteLine($"[Workspace] 自动注册失败: {ex.Message}");
-        //}
-
-        // 加载已持久化的 Workspace Source（同步等待，确保 MainWindow 打开前数据就绪）
         try
         {
             var workspace = _host.Services.GetRequiredService<IWorkspaceManager>();
-            workspace.LoadAsync().GetAwaiter().GetResult();
+            var store = _host.Services.GetRequiredService<IWorkspaceStore>();
+            var loaded = Task.Run(() => store.LoadAsync().GetAwaiter().GetResult()).GetAwaiter().GetResult();
+            foreach (var s in loaded)
+                workspace.AddSource(s);
 
-            // 文档源自动触发首次索引（后台异步执行，不阻塞 UI）
             var parsers = _host.Services.GetRequiredService<IEnumerable<IDocumentParser>>();
             var knowledgeStore = _host.Services.GetRequiredService<IKnowledgeStore>();
             var docSources = workspace.GetSources()
@@ -163,29 +137,20 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[Workspace] 启动加载失败: {ex.Message}");
+            Debug.WriteLine($"[App] 启动加载 Workspace 失败: {ex.Message}");
         }
 
         var mainWindow = _host.Services.GetRequiredService<Views.MainWindow>();
         mainWindow.DataContext = _host.Services.GetRequiredService<MainViewModel>();
         mainWindow.Show();
 
-        // 后台初始化长期记忆存储，不阻塞 UI 启动；
-        // 若 mssql/Qdrant 不可用，仅记忆功能降级，不影响聊天。
-        var memory = _host.Services.GetService<AI.Assistant.Infrastructure.Services.MemoryService>();
+        var memory = _host.Services.GetService<MemoryService>();
         if (memory is not null)
         {
             _ = Task.Run(async () =>
             {
-                try
-                {
-                    await memory.EnsureReadyAsync();
-                }
-                catch (Exception ex)
-                {
-                    // 记录但不抛出，避免影响主流程
-                    System.Diagnostics.Debug.WriteLine($"[Memory] 初始化失败（记忆功能不可用）: {ex.Message}");
-                }
+                try { await memory.EnsureReadyAsync(); }
+                catch (Exception ex) { Debug.WriteLine($"[Memory] {ex.Message}"); }
             });
         }
     }

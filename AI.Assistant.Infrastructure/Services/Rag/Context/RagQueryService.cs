@@ -12,7 +12,7 @@ namespace AI.Assistant.Infrastructure.Services.Rag.Context;
 
 public class RagQueryService : IRagQueryService
 {
-    private readonly ICodeRetriever _retriever;
+    private readonly IRetriever _retriever;
     private readonly IRagContextBuilder _contextBuilder;
     private readonly IOptions<RagOptions> _options;
     private readonly ILogger<RagQueryService> _logger;
@@ -20,7 +20,7 @@ public class RagQueryService : IRagQueryService
     private readonly KnowledgeQueryStore? _knowledgeQueryStore;
 
     public RagQueryService(
-        ICodeRetriever retriever,
+        IRetriever retriever,
         IRagContextBuilder contextBuilder,
         IOptions<RagOptions> options,
         ILogger<RagQueryService> logger,
@@ -40,41 +40,31 @@ public class RagQueryService : IRagQueryService
         CancellationToken cancellationToken = default)
     {
         var opts = _options.Value;
-        var matchedKeyword = FindMatchedKeyword(userMessage);
-        var triggered = matchedKeyword != null;
-
-        if (opts.EnableDebugLog)
-            _logger.LogDebug(
-                "RAG query: query='{Query}', triggered={Triggered}, keyword={Keyword}",
-                userMessage, triggered, matchedKeyword);
-
-        if (!triggered)
-            return BuildSkippedResult(userMessage, opts);
-
         var sw = Stopwatch.StartNew();
 
-        // === Phase 1: Code retrieval (existing) ===
-        IList<RetrievedCodeChunk> codeChunks;
+        if (opts.EnableDebugLog)
+            _logger.LogDebug("RAG query: query='{Query}'", userMessage);
+
+        IList<RetrievedKnowledgeChunk> codeResults;
         try
         {
-            codeChunks = await _retriever.VectorSearchAsync(
+            codeResults = await _retriever.VectorSearchAsync(
                 userMessage, cancellationToken: cancellationToken);
         }
         catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             if (opts.EnableDebugLog)
-                _logger.LogWarning(ex, "RAG code retrieval error for query '{Query}'", userMessage);
+                _logger.LogWarning(ex, "RAG retrieval error for query '{Query}'", userMessage);
             return BuildErrorResult(userMessage, ex.Message, opts);
         }
 
-        var codeRawCount = codeChunks.Count;
+        var codeRawCount = codeResults.Count;
 
-        var filteredCode = opts.MinimumScoreThreshold > 0 && codeChunks.Count > 0
-            ? codeChunks.Where(c => c.Score >= opts.MinimumScoreThreshold).ToList()
-            : codeChunks.ToList();
+        var filteredCode = opts.MinimumScoreThreshold > 0 && codeResults.Count > 0
+            ? codeResults.Where(c => c.Score >= opts.MinimumScoreThreshold).ToList()
+            : [.. codeResults];
 
-        // === Phase 2: Cross-source retrieval ===
         IList<RetrievedKnowledgeChunk> mixedResults = [];
         if (_embedding is not null && _knowledgeQueryStore is not null)
         {
@@ -93,7 +83,6 @@ public class RagQueryService : IRagQueryService
 
         sw.Stop();
 
-        // === Phase 3: Merge & format ===
         var merged = MergeResults(filteredCode, mixedResults, opts);
 
         if (merged.Count == 0)
@@ -103,8 +92,8 @@ public class RagQueryService : IRagQueryService
                     "RAG no results after merge: codeRaw={CodeRaw}, codeAfterFilter={CodeAfter}, mixed={Mixed}",
                     codeRawCount, filteredCode.Count, mixedResults.Count);
 
-            return BuildEmptyResult(userMessage, opts, matchedKeyword,
-                sw.Elapsed, codeRawCount, filteredCode.Count, codeChunks);
+            return BuildEmptyResult(userMessage, opts,
+                sw.Elapsed, codeRawCount, filteredCode.Count, codeResults);
         }
 
         var contextText = string.Join("\n---\n", merged.Select(x => x.Text));
@@ -116,8 +105,8 @@ public class RagQueryService : IRagQueryService
                 merged.Count, contextText.Length / 3);
 
         var debugInfo = opts.EnableDebugInfo
-            ? BuildDebugInfo(userMessage, matchedKeyword, opts.MinimumScoreThreshold,
-                sw.Elapsed, codeRawCount, filteredCode.Count, merged.Count, contextText, codeChunks)
+            ? BuildDebugInfo(userMessage, opts.MinimumScoreThreshold,
+                sw.Elapsed, codeRawCount, filteredCode.Count, merged.Count, contextText, codeResults)
             : null;
 
         return new RagQueryResult
@@ -130,10 +119,8 @@ public class RagQueryService : IRagQueryService
         };
     }
 
-    // ============ 合并逻辑 ============
-
     private static List<(float Score, string Text)> MergeResults(
-        IList<RetrievedCodeChunk> codeResults,
+        IList<RetrievedKnowledgeChunk> codeResults,
         IList<RetrievedKnowledgeChunk> mixedResults,
         RagOptions opts)
     {
@@ -156,20 +143,6 @@ public class RagQueryService : IRagQueryService
             .ToList();
     }
 
-    // ============ 结果构造 ============
-
-    private static RagQueryResult BuildSkippedResult(
-        string userMessage, RagOptions opts)
-    {
-        return new RagQueryResult
-        {
-            HasContext = false,
-            DebugInfo = opts.EnableDebugInfo
-                ? new RagDebugInfo { UserQuery = userMessage, Triggered = false }
-                : null
-        };
-    }
-
     private static RagQueryResult BuildErrorResult(
         string userMessage, string errorMessage, RagOptions opts)
     {
@@ -184,9 +157,9 @@ public class RagQueryService : IRagQueryService
     }
 
     private static RagQueryResult BuildEmptyResult(
-        string userMessage, RagOptions opts, string? matchedKeyword,
+        string userMessage, RagOptions opts,
         TimeSpan retrievalElapsed, int rawCount, int afterFilter,
-        IList<RetrievedCodeChunk> originalChunks)
+        IList<RetrievedKnowledgeChunk> originalChunks)
     {
         return new RagQueryResult
         {
@@ -197,7 +170,6 @@ public class RagQueryService : IRagQueryService
                 {
                     UserQuery = userMessage,
                     Triggered = true,
-                    MatchedKeyword = matchedKeyword,
                     MinimumScoreThreshold = opts.MinimumScoreThreshold,
                     RetrievalElapsed = retrievalElapsed,
                     RawChunksReturned = rawCount,
@@ -211,20 +183,18 @@ public class RagQueryService : IRagQueryService
 
     private static RagDebugInfo BuildDebugInfo(
         string userMessage,
-        string? matchedKeyword,
         double threshold,
         TimeSpan retrievalElapsed,
         int rawCount,
         int afterFilter,
         int totalUsed,
         string contextText,
-        IList<RetrievedCodeChunk> chunks)
+        IList<RetrievedKnowledgeChunk> chunks)
     {
         return new RagDebugInfo
         {
             UserQuery = userMessage,
             Triggered = true,
-            MatchedKeyword = matchedKeyword,
             MinimumScoreThreshold = threshold,
             RetrievalElapsed = retrievalElapsed,
             ContextBuildElapsed = TimeSpan.Zero,
@@ -237,29 +207,17 @@ public class RagQueryService : IRagQueryService
     }
 
     private static IReadOnlyList<RagChunkDebugInfo> MapChunks(
-        IList<RetrievedCodeChunk> chunks)
+        IList<RetrievedKnowledgeChunk> chunks)
     {
         return chunks.Select(c => new RagChunkDebugInfo
         {
-            FilePath = c.Chunk.FilePath,
-            StartLine = c.Chunk.StartLine,
-            EndLine = c.Chunk.EndLine,
+            FilePath = c.Chunk is CodeChunk codeChunk ? codeChunk.FilePath : c.Chunk.SourceUri,
+            StartLine = c.Chunk is CodeChunk cc ? cc.StartLine : 0,
+            EndLine = c.Chunk is CodeChunk ec ? ec.EndLine : 0,
             Score = c.Score,
-            Language = c.Chunk.Language,
-            ChunkType = c.Chunk.ChunkType.ToString()
+            Language = c.Chunk is CodeChunk lc ? lc.Language : "",
+            ChunkType = c.Chunk is CodeChunk tc ? tc.ChunkType.ToString() : "Generic"
         }).ToList();
     }
 
-    // ============ 关键词匹配 ============
-
-    private string? FindMatchedKeyword(string message)
-    {
-        var keywords = _options.Value.RagKeywords;
-        foreach (var keyword in keywords)
-        {
-            if (message.Contains(keyword, StringComparison.OrdinalIgnoreCase))
-                return keyword;
-        }
-        return null;
-    }
 }

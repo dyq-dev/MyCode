@@ -13,7 +13,7 @@ namespace AI.Assistant.Tests;
 
 public class RagQueryServiceTests
 {
-    private readonly FakeCodeRetriever _retriever = new();
+    private readonly FakeRetriever _retriever = new();
     private readonly FakeRagContextBuilder _contextBuilder = new();
     private readonly RagOptions _options = new();
     private readonly RagQueryService _service;
@@ -55,13 +55,12 @@ public class RagQueryServiceTests
     {
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "class A", Language = "csharp" },
                 Score = 0.9f
             }
         ];
-        _contextBuilder.ContextText = "RAG CONTEXT";
 
         var result = await _service.QueryAsync("这个接口怎么实现");
 
@@ -75,13 +74,12 @@ public class RagQueryServiceTests
     {
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "interface IFoo", Language = "csharp" },
                 Score = 0.9f
             }
         ];
-        _contextBuilder.ContextText = "ENGLISH CTX";
 
         var result = await _service.QueryAsync("how to use this interface");
 
@@ -94,13 +92,12 @@ public class RagQueryServiceTests
     {
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "arch.cs", Content = "architecture" },
                 Score = 0.9f
             }
         ];
-        _contextBuilder.ContextText = "ARCH CTX";
 
         var result = await _service.QueryAsync("项目中使用了哪些设计模式");
 
@@ -113,13 +110,12 @@ public class RagQueryServiceTests
     {
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "pipeline.cs", Content = "RAG pipeline" },
                 Score = 0.9f
             }
         ];
-        _contextBuilder.ContextText = "PIPELINE CTX";
 
         var result = await _service.QueryAsync("RAG链路经过哪些组件");
 
@@ -132,13 +128,12 @@ public class RagQueryServiceTests
     {
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "dep.cs", Content = "dependency chain" },
                 Score = 0.9f
             }
         ];
-        _contextBuilder.ContextText = "DEP CTX";
 
         var result = await _service.QueryAsync("MemoryService依赖链");
 
@@ -190,7 +185,7 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.EnableDebugInfo = true);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk
                 {
@@ -207,7 +202,7 @@ public class RagQueryServiceTests
         Assert.NotNull(result.DebugInfo);
         Assert.True(result.DebugInfo.Triggered);
         Assert.Equal("这个接口怎么实现", result.DebugInfo.UserQuery);
-        Assert.Equal("接口", result.DebugInfo.MatchedKeyword);
+        Assert.Null(result.DebugInfo.MatchedKeyword);
         Assert.Equal(1, result.DebugInfo.RawChunksReturned);
         Assert.Equal(1, result.DebugInfo.ChunksAfterFilter);
         Assert.Equal(1, result.DebugInfo.ChunksUsedByBuilder);
@@ -226,7 +221,7 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.EnableDebugInfo = false);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "class A" },
                 Score = 0.9f
@@ -241,14 +236,15 @@ public class RagQueryServiceTests
     }
 
     [Fact]
-    public async Task QueryAsync_DebugInfoEnabled_NotTriggered_ShowsSkipped()
+    public async Task QueryAsync_DebugInfoEnabled_WithoutResults_ShowsEmpty()
     {
         var service = CreateService(o => o.EnableDebugInfo = true);
 
         var result = await service.QueryAsync("你好");
 
         Assert.NotNull(result.DebugInfo);
-        Assert.False(result.DebugInfo.Triggered);
+        Assert.True(result.DebugInfo.Triggered);
+        Assert.False(result.HasContext);
         Assert.Equal("你好", result.DebugInfo.UserQuery);
     }
 
@@ -260,12 +256,12 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.MinimumScoreThreshold = 0.5);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "best match" },
                 Score = 0.9f
             },
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "b.cs", Content = "poor match" },
                 Score = 0.3f
@@ -286,7 +282,7 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.MinimumScoreThreshold = 0.8);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "code" },
                 Score = 0.3f
@@ -305,7 +301,7 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.MinimumScoreThreshold = 0.0);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "code" },
                 Score = 0.01f
@@ -329,12 +325,12 @@ public class RagQueryServiceTests
         });
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "high" },
                 Score = 0.9f
             },
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "b.cs", Content = "low" },
                 Score = 0.3f
@@ -359,7 +355,7 @@ public class RagQueryServiceTests
         var service = CreateService(o => o.EnableDebugInfo = true);
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "code" },
                 Score = 0.9f
@@ -376,12 +372,12 @@ public class RagQueryServiceTests
 
     // ============ Fakes ============
 
-    private sealed class FakeCodeRetriever : ICodeRetriever
+    private sealed class FakeRetriever : IRetriever
     {
-        public IList<RetrievedCodeChunk> Results { get; set; } = [];
+        public IList<RetrievedKnowledgeChunk> Results { get; set; } = [];
         public Exception? Exception { get; set; }
 
-        public Task<IList<RetrievedCodeChunk>> VectorSearchAsync(
+        public Task<IList<RetrievedKnowledgeChunk>> VectorSearchAsync(
             string query, int topK = 5, CancellationToken cancellationToken = default)
         {
             if (Exception is not null)
@@ -402,7 +398,7 @@ public class RagQueryServiceTests
         ];
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "var x = 1;" },
                 Score = 0.85f
@@ -426,7 +422,7 @@ public class RagQueryServiceTests
         var (embedding, knowledgeStore, docVectorStore) = CreateCrossSourceFakes();
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "class Program { }" },
                 Score = 0.9f
@@ -484,7 +480,7 @@ public class RagQueryServiceTests
         var knowledgeStore = new KnowledgeQueryStore(docVectorStore, Options.Create(new RagOptions { QdrantCollectionName = "test" }));
         _retriever.Results =
         [
-            new RetrievedCodeChunk
+            new RetrievedKnowledgeChunk
             {
                 Chunk = new CodeChunk { FilePath = "a.cs", Content = "fallback code" },
                 Score = 0.9f

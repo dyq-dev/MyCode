@@ -92,6 +92,9 @@
                             <Setter Property="Background" Value="Transparent" />
                             <Setter Property="CornerRadius" Value="8" />
                             <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasPlayground}" Value="False">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding IsPlaygroundMode}" Value="True">
                                     <Setter Property="Background" Value="{StaticResource SidebarActiveBrush}" />
                                 </DataTrigger>

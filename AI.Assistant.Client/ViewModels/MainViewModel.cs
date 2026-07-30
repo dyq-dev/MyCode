@@ -32,6 +32,10 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isPlaygroundMode;
 
+    public bool HasPlayground { get; }
+
+    public bool ShowRagDetails { get; }
+
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
 
     public ObservableCollection<KnowledgeSource> Sources { get; } = [];
@@ -42,7 +46,8 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<IDocumentParser> parsers,
         IKnowledgeStore knowledgeStore,
         IIndexer indexer,
-        MemoryService? memory = null)
+        MemoryService? memory = null,
+        bool isDevMode = true)
     {
         _chatService = chatService;
         _workspace = workspace;
@@ -50,6 +55,8 @@ public partial class MainViewModel : ObservableObject
         _knowledgeStore = knowledgeStore;
         _indexer = indexer;
         _memory = memory;
+        HasPlayground = isDevMode;
+        ShowRagDetails = isDevMode;
         NewConversation();
 
         foreach (var source in _workspace.GetSources())
@@ -70,7 +77,7 @@ public partial class MainViewModel : ObservableObject
     private void NewConversation()
     {
         var conversation = _chatService is not null
-            ? new ConversationViewModel(_chatService, _memory)
+            ? new ConversationViewModel(_chatService, _memory, ShowRagDetails)
             : new ConversationViewModel();
         conversation.Title = $"新对话 {Conversations.Count + 1}";
         Conversations.Insert(0, conversation);
@@ -173,7 +180,7 @@ public partial class MainViewModel : ObservableObject
     {
         var dialog = new OpenFileDialog
         {
-            Filter = "文档文件 (*.md;*.txt)|*.md;*.txt|Markdown (*.md)|*.md|所有文件 (*.*)|*.*",
+            Filter = "文档文件 (*.md;*.txt;*.pdf)|*.md;*.txt;*.pdf|Markdown (*.md)|*.md|文本文件 (*.txt)|*.txt|PDF 文件 (*.pdf)|*.pdf|所有文件 (*.*)|*.*",
             Multiselect = false
         };
 
@@ -208,12 +215,25 @@ public partial class MainViewModel : ObservableObject
                 chunks.Add(chunk);
             }
 
+            if (chunks.Count == 0)
+            {
+                source.IndexStatus = "无内容";
+                return;
+            }
+
             await _knowledgeStore.SaveChunksAsync(chunks);
             source.IndexStatus = "已索引";
         }
-        catch
+        catch (Exception ex)
         {
-            source.IndexStatus = "失败";
+            var msg = ex.InnerException is not null
+                ? $"{ex.Message}\n---\n{ex.InnerException.Message}"
+                : ex.Message;
+            System.Diagnostics.Debug.WriteLine($"[上传PDF] 失败: {ex}");
+            source.IndexStatus = $"{Path.GetFileName(source.Uri)} 索引失败";
+            System.Windows.MessageBox.Show(msg, "索引失败",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Error);
         }
     }
 }

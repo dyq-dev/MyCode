@@ -12,6 +12,10 @@ public interface IKnowledgeStore
         string sourceId,
         CancellationToken cancellationToken = default);
 
+    Task DeleteChunksByFileAsync(
+        string filePath,
+        CancellationToken cancellationToken = default);
+
     Task DeleteProjectAsync(
         string projectPath,
         CancellationToken cancellationToken = default);

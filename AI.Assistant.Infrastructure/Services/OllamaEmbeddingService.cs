@@ -36,7 +36,12 @@ public class OllamaEmbeddingService : IEmbeddingService
         };
 
         var response = await _httpClient.PostAsJsonAsync("api/embeddings", request, cancellationToken);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new InvalidOperationException(
+                $"Ollama embedding 返回 {(int)response.StatusCode}: {body}");
+        }
 
         var result = await response.Content.ReadFromJsonAsync<OllamaEmbedResponse>(cancellationToken: cancellationToken);
         return result?.Embedding ?? [];

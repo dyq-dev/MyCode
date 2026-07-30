@@ -4,24 +4,17 @@ using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using Microsoft.Extensions.Options;
 
-#pragma warning disable CS0618 // 保留旧接口作为兼容层
-
 namespace AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 
-/// <summary>
-/// 代码检索器——Code RAG 查询入口。
-/// 流程：Query → Embed → Search（ICodeQueryStore）→ TopK RetrievedCodeChunk。
-/// 不依赖 IVectorStore，不关心底层向量库细节。
-/// </summary>
-public class CodeRetriever : ICodeRetriever, IRetriever
+public class CodeRetriever : IRetriever
 {
     private readonly IEmbeddingService _embedding;
-    private readonly ICodeQueryStore _queryStore;
+    private readonly IQueryStore _queryStore;
     private readonly RagOptions _options;
 
     public CodeRetriever(
         IEmbeddingService embedding,
-        ICodeQueryStore queryStore,
+        IQueryStore queryStore,
         IOptions<RagOptions> options)
     {
         _embedding = embedding;
@@ -29,28 +22,16 @@ public class CodeRetriever : ICodeRetriever, IRetriever
         _options = options.Value;
     }
 
-    public async Task<IList<RetrievedCodeChunk>> VectorSearchAsync(
+    public async Task<IList<RetrievedKnowledgeChunk>> VectorSearchAsync(
         string query,
         int topK = 5,
         CancellationToken cancellationToken = default)
     {
-        // 保护：不允许超过配置上限
         var actualTopK = Math.Min(topK, _options.MaxTopK);
 
         var vector = await _embedding.EmbedAsync(query, cancellationToken);
         var results = await _queryStore.SearchAsync(vector, actualTopK, cancellationToken);
 
         return results;
-    }
-
-    async Task<IList<RetrievedKnowledgeChunk>> IRetriever.VectorSearchAsync(
-        string query, int topK, CancellationToken cancellationToken)
-    {
-        var results = await VectorSearchAsync(query, topK, cancellationToken);
-        return results.Select(r => new RetrievedKnowledgeChunk
-        {
-            Chunk = r.Chunk,
-            Score = r.Score
-        }).ToList();
     }
 }

@@ -6,25 +6,26 @@ Refresh the WPF chat client UI to match the user's preference for "简约、清�
 
 ## Color System
 
-| Role | Current | New |
-|------|---------|-----|
-| Primary | `#10A37F` | `#0D9488` |
-| On Primary | `#FFFFFF` | `#FFFFFF` |
-| Secondary | `#14B8A6` | (kept as accent variant) |
-| Background | `#FFFFFF` | `#F0FDFA` |
-| Surface | `#F9FAFB` | `#FFFFFF` |
-| Sidebar | `#F3F4F6` | `#FFFFFF` |
-| Muted | `#F3F4F6` | `#E8F1F4` |
-| Border | `#E5E7EB` | `#CCFBF1` |
-| Text Primary | `#111827` | `#134E4A` |
-| Text Secondary | `#6B7280` | `#5C7A6F` |
-| Text Tertiary | `#9CA3AF` | `#94A3B8` |
-| User Bubble | `#111827` black | `#0D9488` teal |
-| User Bubble Text | `#FFFFFF` | `#FFFFFF` |
-| Assistant Bubble | `#F3F4F6` gray | `#FFFFFF` white |
-| Assistant Bubble Text | `#111827` | `#134E4A` |
-| Divider | `#F3F4F6` | `#F0FDFA` |
-| Destructive | `#EF4444` | `#DC2626` |
+| Role | Final Value |
+|------|-------------|
+| Primary | `#1E3A8A` navy |
+| Accent Hover | `#1D4ED8` |
+| Accent Light | `#DBEAFE` |
+| Background | `#F8FAFC` |
+| Surface | `#FFFFFF` |
+| Sidebar | `#FFFFFF` |
+| Sidebar Hover | `#EFF6FF` |
+| Sidebar Active | `#DBEAFE` |
+| Border | `#BFDBFE` |
+| Divider | `#E9EEF5` |
+| Text Primary | `#0F172A` |
+| Text Secondary | `#475569` |
+| Text Tertiary | `#94A3B8` |
+| User Bubble | `#1E3A8A` navy |
+| User Bubble Text | `#FFFFFF` |
+| Assistant Bubble | `#FFFFFF` white |
+| Assistant Bubble Text | `#0F172A` |
+| Destructive | `#DC2626` |
 
 ## Layout
 

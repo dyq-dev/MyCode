@@ -7,29 +7,29 @@
          ============================================ -->
 
     <!-- ============ Color Palette ============ -->
-    <Color x:Key="AccentColor">#0D9488</Color>
-    <Color x:Key="AccentHoverColor">#0F766E</Color>
-    <Color x:Key="AccentLightColor">#CCFBF1</Color>
+    <Color x:Key="AccentColor">#1E3A8A</Color>
+    <Color x:Key="AccentHoverColor">#1D4ED8</Color>
+    <Color x:Key="AccentLightColor">#DBEAFE</Color>
 
     <Color x:Key="WhiteColor">#FFFFFF</Color>
-    <Color x:Key="BackgroundColor">#F0FDFA</Color>
+    <Color x:Key="BackgroundColor">#F8FAFC</Color>
     <Color x:Key="SurfaceColor">#FFFFFF</Color>
     <Color x:Key="SidebarColor">#FFFFFF</Color>
-    <Color x:Key="SidebarHoverColor">#F0FDFA</Color>
-    <Color x:Key="SidebarActiveColor">#CCFBF1</Color>
+    <Color x:Key="SidebarHoverColor">#EFF6FF</Color>
+    <Color x:Key="SidebarActiveColor">#DBEAFE</Color>
 
-    <Color x:Key="BorderColor">#CCFBF1</Color>
-    <Color x:Key="DividerColor">#F0FDFA</Color>
+    <Color x:Key="BorderColor">#BFDBFE</Color>
+    <Color x:Key="DividerColor">#E9EEF5</Color>
 
-    <Color x:Key="TextPrimaryColor">#134E4A</Color>
-    <Color x:Key="TextSecondaryColor">#5C7A6F</Color>
+    <Color x:Key="TextPrimaryColor">#0F172A</Color>
+    <Color x:Key="TextSecondaryColor">#475569</Color>
     <Color x:Key="TextTertiaryColor">#94A3B8</Color>
     <Color x:Key="TextOnDarkColor">#FFFFFF</Color>
 
-    <Color x:Key="UserBubbleColor">#0D9488</Color>
+    <Color x:Key="UserBubbleColor">#1E3A8A</Color>
     <Color x:Key="UserBubbleTextColor">#FFFFFF</Color>
     <Color x:Key="AssistantBubbleColor">#FFFFFF</Color>
-    <Color x:Key="AssistantBubbleTextColor">#134E4A</Color>
+    <Color x:Key="AssistantBubbleTextColor">#0F172A</Color>
     <Color x:Key="SystemBubbleColor">#FEF3C7</Color>
     <Color x:Key="SystemBubbleTextColor">#92400E</Color>
 

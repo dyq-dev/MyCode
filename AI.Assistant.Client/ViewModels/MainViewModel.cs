@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media;
 using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Models;
 using AI.Assistant.Core.Rag.Interfaces;
@@ -307,51 +308,64 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private void RenameConversation(ConversationViewModel conversation)
     {
+        var app = Application.Current;
         var textBox = new System.Windows.Controls.TextBox
         {
             Text = conversation.Title,
             FontSize = 14,
             Margin = new System.Windows.Thickness(0, 0, 0, 12),
-            MinWidth = 300
+            Style = (Style)app.FindResource("InputTextBox")
         };
         textBox.Focus();
+        textBox.SelectAll();
+
+        var okButton = new System.Windows.Controls.Button
+        {
+            Content = "确定",
+            Width = 80,
+            Height = 32,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            IsDefault = true,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Style = (Style)app.FindResource("SendButton")
+        };
 
         Window? window = null;
         window = new Window
         {
             Title = "重命名对话",
-            Width = 360,
-            Height = 140,
+            Width = 380,
+            Height = 150,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            Owner = Application.Current.MainWindow,
-            Content = new StackPanel
+            Owner = app.MainWindow,
+            ShowInTaskbar = false,
+            ResizeMode = ResizeMode.NoResize,
+            Background = (Brush)app.FindResource("BackgroundBrush"),
+            FontFamily = (FontFamily)app.FindResource("PrimaryFont")
+        };
+
+        okButton.Click += (s, e) =>
+        {
+            var name = textBox.Text.Trim();
+            if (name.Length > 0)
+                conversation.Title = name;
+            window!.Close();
+        };
+
+        window.Content = new StackPanel
+        {
+            Margin = new System.Windows.Thickness(20),
+            Children =
             {
-                Margin = new System.Windows.Thickness(16),
-                Children =
+                new System.Windows.Controls.TextBlock
                 {
-                    new System.Windows.Controls.TextBlock
-                    {
-                        Text = "输入新名称:",
-                        FontSize = 13,
-                        Margin = new System.Windows.Thickness(0, 0, 0, 8)
-                    },
-                    textBox,
-                    new System.Windows.Controls.Button
-                    {
-                        Content = "确定",
-                        Width = 80,
-                        Height = 30,
-                        HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
-                        IsDefault = true,
-                        Command = new RelayCommand(() =>
-                        {
-                            var name = textBox.Text.Trim();
-                            if (name.Length > 0)
-                                conversation.Title = name;
-                            window!.Close();
-                        })
-                    }
-                }
+                    Text = "输入新名称:",
+                    FontSize = 13,
+                    Margin = new System.Windows.Thickness(0, 0, 0, 8),
+                    Foreground = (Brush)app.FindResource("TextPrimaryBrush")
+                },
+                textBox,
+                okButton
             }
         };
 

@@ -113,6 +113,9 @@ Before committing:
 - `git diff --stat` — review scope
 - Write commit per `contextual-commit` format (action lines: intent, decision, rejected, constraint, learned)
 
+After committing:
+- `git push` — auto-push to GitHub
+
 ## Dependencies
 
 - CommunityToolkit.Mvvm 8.4.0

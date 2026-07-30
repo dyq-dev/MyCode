@@ -1,0 +1,22 @@
+using AI.Assistant.Core.Rag.Models;
+
+namespace AI.Assistant.Core.Rag.Interfaces;
+
+public interface IKnowledgeStore
+{
+    Task SaveChunksAsync(
+        IEnumerable<IKnowledgeChunk> chunks,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteChunksBySourceAsync(
+        string sourceId,
+        CancellationToken cancellationToken = default);
+
+    Task DeleteProjectAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default);
+
+    Task<IList<IndexFileRecord>> GetIndexedFilesAsync(
+        string projectPath,
+        CancellationToken cancellationToken = default);
+}

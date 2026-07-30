@@ -7,6 +7,8 @@ using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using Qdrant.Client.Grpc;
 
+#pragma warning disable CS0618 // 保留旧接口作为兼容层
+
 namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 
 /// <summary>
@@ -14,7 +16,7 @@ namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 /// 每个代码块作为一个 Qdrant point 存储，附带完整的元数据；每个文件对应一条索引记录
 /// （_type = "index_record"），用于增量索引的比较和清理。
 /// </summary>
-public class CodeIndexStore : ICodeIndexStore
+public class CodeIndexStore : ICodeIndexStore, IKnowledgeStore
 {
     // Qdrant 集合向量维度，需与 Embedding 模型输出维度一致
     private const int VectorSize = 512;
@@ -22,12 +24,14 @@ public class CodeIndexStore : ICodeIndexStore
     private readonly IVectorStore _vectorStore;
     private readonly IQdrantIndexStorage _storage;
     private readonly RagOptions _options;
+    private readonly IEmbeddingService _embeddingService;
 
-    public CodeIndexStore(IVectorStore vectorStore, IQdrantIndexStorage storage, RagOptions options)
+    public CodeIndexStore(IVectorStore vectorStore, IQdrantIndexStorage storage, RagOptions options, IEmbeddingService embeddingService)
     {
         _vectorStore = vectorStore;
         _storage = storage;
         _options = options;
+        _embeddingService = embeddingService;
     }
 
     /// <summary>旧重载：接收原始 CodeChunk，内部填充零向量后委托给新重载</summary>
@@ -63,6 +67,9 @@ public class CodeIndexStore : ICodeIndexStore
             var metadata = new Dictionary<string, string>
             {
                 [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
+                [CodeRagSchema.FieldSourceId] = chunk.SourceId,
+                [CodeRagSchema.FieldSourceType] = CodeRagSchema.SourceTypeCode,
+                [CodeRagSchema.FieldSourceUri] = chunk.ProjectPath,
                 [CodeRagSchema.FieldFilePath] = chunk.FilePath,
                 [CodeRagSchema.FieldContent] = chunk.Content,
                 [CodeRagSchema.FieldLanguage] = chunk.Language,
@@ -108,6 +115,66 @@ public class CodeIndexStore : ICodeIndexStore
         var collection = _options.QdrantCollectionName;
         await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeChunk), (CodeRagSchema.FieldFilePath, filePath)], cancellationToken);
         await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeIndexRecord), (CodeRagSchema.FieldFilePath, filePath)], cancellationToken);
+    }
+
+    async Task IKnowledgeStore.SaveChunksAsync(IEnumerable<IKnowledgeChunk> chunks, CancellationToken cancellationToken)
+    {
+        var chunksList = chunks.ToList();
+        if (chunksList.Count == 0)
+            return;
+
+        // Fast path: all are CodeChunks → delegate to existing code path
+        if (chunksList.All(c => c is CodeChunk))
+        {
+            await SaveChunksAsync(chunksList.Cast<CodeChunk>(), cancellationToken);
+            return;
+        }
+
+        // Generic path: embed and save any IKnowledgeChunk
+        var collection = _options.QdrantCollectionName;
+        await EnsureCollectionAsync(collection, cancellationToken);
+
+        var embedResults = await _embeddingService.EmbedBatchAsync(
+            chunksList.Select(c => c.Content), cancellationToken);
+
+        for (int i = 0; i < chunksList.Count; i++)
+        {
+            var chunk = chunksList[i];
+            var vector = i < embedResults.Count ? embedResults[i] : new float[512];
+
+            var sourceTypeStr = chunk.SourceType switch
+            {
+                SourceType.Code => CodeRagSchema.SourceTypeCode,
+                SourceType.Document or SourceType.Markdown or SourceType.Text => CodeRagSchema.SourceTypeDocument,
+                _ => "unknown"
+            };
+
+            var metadata = new Dictionary<string, string>
+            {
+                [CodeRagSchema.FieldType] = CodeRagSchema.TypeChunk,
+                [CodeRagSchema.FieldSourceId] = chunk.SourceId,
+                [CodeRagSchema.FieldSourceType] = sourceTypeStr,
+                [CodeRagSchema.FieldSourceUri] = chunk.SourceUri,
+                [CodeRagSchema.FieldContent] = chunk.Content,
+                [CodeRagSchema.FieldProjectPath] = chunk.ProjectPath,
+                [CodeRagSchema.FieldIndexedAt] = chunk.IndexedAt.ToString("O")
+            };
+
+            // Copy all Metadata dictionary entries
+            foreach (var kv in chunk.Metadata)
+            {
+                metadata[kv.Key] = kv.Value;
+            }
+
+            await _vectorStore.UpsertAsync(collection, chunk.Id, vector, metadata, cancellationToken);
+        }
+    }
+
+    async Task IKnowledgeStore.DeleteChunksBySourceAsync(string sourceId, CancellationToken cancellationToken)
+    {
+        var collection = _options.QdrantCollectionName;
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeChunk), (CodeRagSchema.FieldSourceId, sourceId)], cancellationToken);
+        await DeleteByFilterAsync(collection, [(CodeRagSchema.FieldType, CodeRagSchema.TypeIndexRecord), (CodeRagSchema.FieldSourceId, sourceId)], cancellationToken);
     }
 
     public async Task DeleteProjectAsync(string projectPath, CancellationToken cancellationToken = default)

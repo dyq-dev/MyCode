@@ -1,6 +1,9 @@
 using System.Collections.ObjectModel;
 using AI.Assistant.Client.Models;
+using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Context;
+using AI.Assistant.Core.Rag.Models;
+using AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -9,6 +12,10 @@ namespace AI.Assistant.Client.ViewModels;
 public partial class KnowledgePlaygroundViewModel : ObservableObject
 {
     private readonly IRagQueryService _ragQuery;
+    private readonly KnowledgeQueryStore _knowledgeQueryStore;
+    private readonly IEmbeddingService _embeddingService;
+
+    public ObservableCollection<RetrievedKnowledgeChunk> MixedSearchResults { get; } = [];
 
     [ObservableProperty]
     private string _inputText = "";
@@ -22,9 +29,14 @@ public partial class KnowledgePlaygroundViewModel : ObservableObject
     [ObservableProperty]
     private RagDebugDisplayModel _result = new();
 
-    public KnowledgePlaygroundViewModel(IRagQueryService ragQuery)
+    public KnowledgePlaygroundViewModel(
+        IRagQueryService ragQuery,
+        KnowledgeQueryStore knowledgeQueryStore,
+        IEmbeddingService embeddingService)
     {
         _ragQuery = ragQuery;
+        _knowledgeQueryStore = knowledgeQueryStore;
+        _embeddingService = embeddingService;
     }
 
     [RelayCommand]
@@ -37,10 +49,15 @@ public partial class KnowledgePlaygroundViewModel : ObservableObject
         IsBusy = true;
         StatusText = "查询中...";
         Result.Clear();
+        MixedSearchResults.Clear();
 
         try
         {
-            var ragResult = await _ragQuery.QueryAsync(query);
+            var ragQueryTask = _ragQuery.QueryAsync(query);
+            var vectorTask = _embeddingService.EmbedAsync(query);
+
+            var ragResult = await ragQueryTask;
+            var queryVector = await vectorTask;
 
             if (ragResult.DebugInfo is not null)
                 ApplyDebugInfo(ragResult.DebugInfo);
@@ -51,6 +68,10 @@ public partial class KnowledgePlaygroundViewModel : ObservableObject
             StatusText = ragResult.HasContext
                 ? $"完成 — Context 已生成（{ragResult.EstimatedTokens} tokens）"
                 : "未生成上下文（未触发 RAG 或无结果）";
+
+            var mixedResults = await _knowledgeQueryStore.SearchAsync(queryVector, cancellationToken: default);
+            foreach (var r in mixedResults)
+                MixedSearchResults.Add(r);
         }
         catch (Exception ex)
         {
@@ -93,6 +114,7 @@ public partial class KnowledgePlaygroundViewModel : ObservableObject
     private void ClearResult()
     {
         Result.Clear();
+        MixedSearchResults.Clear();
         StatusText = "";
     }
 }

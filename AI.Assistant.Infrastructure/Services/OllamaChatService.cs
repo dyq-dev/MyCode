@@ -78,15 +78,18 @@ public class OllamaChatService : IChatService
 
         // 使用 ResponseHeadersRead 避免缓冲整个响应，实现真正的流式读取
         using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+            await ThrowWithErrorBodyAsync(response);
 
         // 逐行读取流式响应
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
-        while (!reader.EndOfStream)
+        while (true)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null) break;
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             // 解析 JSON 行，提取文本片段
@@ -143,6 +146,31 @@ public class OllamaChatService : IChatService
         // 最后添加当前用户消息
         messages.Add(new OllamaMessage { Role = "user", Content = userMessage });
         return messages;
+    }
+
+    private static async Task ThrowWithErrorBodyAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        var message = $"HTTP {(int)response.StatusCode}";
+
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var error = doc.RootElement.TryGetProperty("error", out var err)
+                    ? err.GetString()
+                    : body;
+                if (!string.IsNullOrWhiteSpace(error))
+                    message += $": {error}";
+            }
+            catch
+            {
+                message += body.Length > 200 ? $": {body[..200]}..." : $": {body}";
+            }
+        }
+
+        throw new HttpRequestException(message);
     }
 }
 

@@ -2,7 +2,7 @@ using AI.Assistant.Core.Rag.Models;
 
 namespace AI.Assistant.Core.Rag.Interfaces;
 
-/// <summary>代码索引存储器，负责持久化代码分块及其向量</summary>
+[Obsolete("Use IKnowledgeStore instead")]
 public interface ICodeIndexStore
 {
     /// <summary>保存一批原始代码分块（内部生成零向量，兼容旧调用方）</summary>

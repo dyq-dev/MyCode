@@ -1,6 +1,9 @@
+using System.IO;
 using System.Windows;
 using AI.Assistant.Client.ViewModels;
 using AI.Assistant.Core.Rag.Context;
+using AI.Assistant.Core.Rag.Interfaces;
+using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using AI.Assistant.Infrastructure.Extensions;
 using AI.Assistant.Infrastructure.Services.Rag.Context;
@@ -64,6 +67,8 @@ public partial class App : Application
                     o.EnableDebugInfo = true;
                     o.EnableDebugLog = true;
                     o.MinimumScoreThreshold = 0.3;
+                    o.ProjectPath = Environment.CurrentDirectory;
+                    o.RagKeywords = [.. o.RagKeywords, "怎么", "什么", "做法", "步骤", "内容"];
                 });
                 services.AddRagChatIntegration();
 
@@ -79,6 +84,87 @@ public partial class App : Application
     {
         base.OnStartup(e);
         _host.Start();
+
+        // 自动注册当前项目为 KnowledgeSource（暂未启用）
+        //try
+        //{
+        //    var workspace = _host.Services.GetRequiredService<IWorkspaceManager>();
+        //    var options = _host.Services.GetRequiredService<RagOptions>();
+        //    var projectPath = options.ProjectPath;
+        //    if (string.IsNullOrEmpty(projectPath))
+        //        projectPath = Environment.CurrentDirectory;
+        //
+        //    if (workspace.GetSourceByUri(projectPath) is null)
+        //    {
+        //        workspace.AddSource(new KnowledgeSource
+        //        {
+        //            Name = "当前项目",
+        //            SourceType = SourceType.Code,
+        //            Uri = projectPath,
+        //            AutoSync = true,
+        //            IndexStatus = "未索引"
+        //        });
+        //    }
+        //}
+        //catch (Exception ex)
+        //{
+        //    System.Diagnostics.Debug.WriteLine($"[Workspace] 自动注册失败: {ex.Message}");
+        //}
+
+        // 加载已持久化的 Workspace Source（同步等待，确保 MainWindow 打开前数据就绪）
+        try
+        {
+            var workspace = _host.Services.GetRequiredService<IWorkspaceManager>();
+            workspace.LoadAsync().GetAwaiter().GetResult();
+
+            // 文档源自动触发首次索引（后台异步执行，不阻塞 UI）
+            var parsers = _host.Services.GetRequiredService<IEnumerable<IDocumentParser>>();
+            var knowledgeStore = _host.Services.GetRequiredService<IKnowledgeStore>();
+            var docSources = workspace.GetSources()
+                .Where(s => s.SourceType is SourceType.Document or SourceType.Markdown
+                    or SourceType.Text or SourceType.Pdf)
+                .ToList();
+
+            foreach (var source in docSources)
+            {
+                var captured = source;
+                _ = Task.Run(async () =>
+                {
+                    captured.IndexStatus = "索引中";
+                    try
+                    {
+                        var ext = Path.GetExtension(captured.Uri);
+                        var parser = parsers.FirstOrDefault(p =>
+                            p.SupportedExtensions.Contains(ext, StringComparer.OrdinalIgnoreCase));
+                        if (parser is null)
+                        {
+                            captured.IndexStatus = "不支持的格式";
+                            return;
+                        }
+
+                        var chunks = new List<KnowledgeChunk>();
+                        await foreach (var chunk in parser.ParseAsync(captured.Uri))
+                        {
+                            chunk.SourceId = captured.Id;
+                            chunk.SourceUri = captured.Uri;
+                            chunk.ProjectPath = captured.Uri;
+                            chunks.Add(chunk);
+                        }
+
+                        await knowledgeStore.SaveChunksAsync(chunks);
+                        captured.IndexStatus = "已索引";
+                    }
+                    catch
+                    {
+                        captured.IndexStatus = "失败";
+                    }
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Workspace] 启动加载失败: {ex.Message}");
+        }
 
         var mainWindow = _host.Services.GetRequiredService<Views.MainWindow>();
         mainWindow.DataContext = _host.Services.GetRequiredService<MainViewModel>();

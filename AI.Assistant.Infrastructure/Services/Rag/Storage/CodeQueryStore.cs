@@ -5,6 +5,8 @@ using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using Microsoft.Extensions.Options;
 
+#pragma warning disable CS0618 // 保留旧接口作为兼容层
+
 namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 
 /// <summary>
@@ -12,7 +14,7 @@ namespace AI.Assistant.Infrastructure.Services.Rag.Storage;
 /// 职责唯一：接收查询向量 → 搜索 Qdrant（自动加 _type = "chunk" 过滤）→ 返回 RetrievedCodeChunk。
 /// 所有 Qdrant 字段名、类型标识等细节通过 CodeRagSchema / CodeRagMapper 集中管理。
 /// </summary>
-public class CodeQueryStore : ICodeQueryStore
+public class CodeQueryStore : ICodeQueryStore, IQueryStore
 {
     private readonly IVectorStore _vectorStore;
     private readonly RagOptions _options;
@@ -49,6 +51,17 @@ public class CodeQueryStore : ICodeQueryStore
                 Chunk = chunk,
                 Score = r.Score
             };
+        }).ToList();
+    }
+
+    async Task<IList<RetrievedKnowledgeChunk>> IQueryStore.SearchAsync(
+        float[] queryVector, int topK, CancellationToken cancellationToken)
+    {
+        var results = await SearchAsync(queryVector, topK, cancellationToken);
+        return results.Select(r => new RetrievedKnowledgeChunk
+        {
+            Chunk = r.Chunk,
+            Score = r.Score
         }).ToList();
     }
 }

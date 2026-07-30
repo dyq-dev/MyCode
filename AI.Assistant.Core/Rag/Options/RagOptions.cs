@@ -29,6 +29,9 @@ public class RagOptions
     /// <summary>Score 最低阈值（0 = 不过滤）。RagQueryService 在 Retriever 返回后过滤</summary>
     public double MinimumScoreThreshold { get; set; } = 0.0;
 
+    /// <summary>当前项目路径，用于自动注册 KnowledgeSource</summary>
+    public string ProjectPath { get; set; } = "";
+
     /// <summary>RAG 触发关键词列表。用户消息包含任一关键词则触发向量检索</summary>
     public string[] RagKeywords { get; set; } =
     [

@@ -2,6 +2,7 @@ using AI.Assistant.Core.Rag.Models;
 
 namespace AI.Assistant.Core.Rag.Interfaces;
 
+[Obsolete("Use IIndexer instead")]
 public interface ICodeIndexer
 {
     Task<IndexResult> IndexProjectAsync(string projectPath, CancellationToken cancellationToken = default);

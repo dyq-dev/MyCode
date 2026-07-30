@@ -20,7 +20,7 @@ public class CodeIndexStoreTests
     {
         _options = new RagOptions { QdrantCollectionName = TestCollection };
         _vectorStore = new FakeVectorStore(_qdrant);
-        _store = new CodeIndexStore(_vectorStore, _qdrant, _options);
+        _store = new CodeIndexStore(_vectorStore, _qdrant, _options, new FakeEmbeddingService());
     }
 
     private static CodeChunk Chunk(string filePath, string projectPath = @"D:\test", string content = "code", string language = "csharp")
@@ -280,6 +280,15 @@ public class CodeIndexStoreTests
     }
 
     // ============ Fake VectorStore ============
+
+    private sealed class FakeEmbeddingService : IEmbeddingService
+    {
+        public Task<float[]> EmbedAsync(string text, CancellationToken ct = default)
+            => Task.FromResult(new float[512]);
+
+        public Task<IList<float[]>> EmbedBatchAsync(IEnumerable<string> texts, CancellationToken ct = default)
+            => Task.FromResult<IList<float[]>>(texts.Select(_ => new float[512]).ToList());
+    }
 
     private sealed class FakeVectorStore : IVectorStore
     {

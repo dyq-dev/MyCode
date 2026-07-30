@@ -2,6 +2,8 @@ using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 
+#pragma warning disable CS0618 // 保留旧接口作为兼容层
+
 namespace AI.Assistant.Infrastructure.Services.Rag.Indexing;
 
 /// <summary>
@@ -9,7 +11,7 @@ namespace AI.Assistant.Infrastructure.Services.Rag.Indexing;
 /// IndexProjectAsync 执行全量重建（先全部写入，再清理脏数据）；
 /// IncrementalIndexAsync 执行增量更新（对比差异，只处理变更文件）。
 /// </summary>
-public class CodeIndexer : ICodeIndexer
+public class CodeIndexer : ICodeIndexer, IIndexer
 {
     private readonly IProjectScanner _scanner;
     private readonly IIndexComparer _comparer;
@@ -136,6 +138,11 @@ public class CodeIndexer : ICodeIndexer
         result.ChunksCreated = allEmbedded.Count;
         result.Duration = DateTime.UtcNow - startedAt;
         return result;
+    }
+
+    async Task<IndexResult> IIndexer.IndexSourceAsync(string sourceUri, CancellationToken cancellationToken)
+    {
+        return await IndexProjectAsync(sourceUri, cancellationToken);
     }
 
     /// <summary>增量索引：扫描 → 对比 → 删除旧数据 → 分块+嵌入 → 存储</summary>

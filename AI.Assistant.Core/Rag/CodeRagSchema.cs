@@ -25,6 +25,13 @@ public static class CodeRagSchema
     public const string FieldIndexedAt = "indexed_at";
     public const string FieldFileHash = "file_hash";
     public const string FieldLastModifiedAt = "last_modified_at";
+    public const string FieldSourceId = "source_id";
+    public const string FieldSourceType = "source_type";
+    public const string FieldSourceUri = "source_uri";
+
+    // ========== SourceType 常量 ==========
+    public const string SourceTypeCode = "code";
+    public const string SourceTypeDocument = "document";
 }
 
 /// <summary>将 Qdrant payload 映射为 CodeChunk 领域对象</summary>

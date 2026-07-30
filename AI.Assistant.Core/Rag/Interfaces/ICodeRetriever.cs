@@ -2,11 +2,7 @@ using AI.Assistant.Core.Rag.Models;
 
 namespace AI.Assistant.Core.Rag.Interfaces;
 
-/// <summary>
-/// 代码检索器——Code RAG 查询入口。
-/// 职责：自然语言查询 → Embedding → 向量搜索 → TopK 代码分块。
-/// 不负责 Prompt 拼接、聊天、Memory、文件读取。
-/// </summary>
+[Obsolete("Use IRetriever instead")]
 public interface ICodeRetriever
 {
     /// <summary>向量检索：输入自然语言查询，返回相关代码块</summary>

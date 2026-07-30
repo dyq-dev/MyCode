@@ -1,3 +1,4 @@
+using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Context;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Options;
@@ -6,12 +7,16 @@ using AI.Assistant.Infrastructure.Services.Rag.Chunking;
 using AI.Assistant.Infrastructure.Services.Rag.Chunking.Strategies;
 using AI.Assistant.Infrastructure.Services.Rag.Context;
 using AI.Assistant.Infrastructure.Services.Rag.Indexing;
+using AI.Assistant.Infrastructure.Services.Rag.Parsers;
 using AI.Assistant.Infrastructure.Services.Rag.Prompt;
 using AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
 using AI.Assistant.Infrastructure.Services.Rag.Storage;
+using AI.Assistant.Infrastructure.Services.Rag.Workspace;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+
+#pragma warning disable CS0618 // 保留旧接口作为兼容层
 
 namespace AI.Assistant.Infrastructure.Extensions;
 
@@ -31,7 +36,9 @@ public static class RagServiceCollectionExtensions
             .AddRagIndexing()
             .AddRagRetrieval()
             .AddRagContext()
-            .AddRagPrompt();
+            .AddRagPrompt()
+            .AddRagWorkspace()
+            .AddRagParsers();
     }
 
     public static IServiceCollection AddRagScanner(this IServiceCollection services)
@@ -51,20 +58,29 @@ public static class RagServiceCollectionExtensions
     public static IServiceCollection AddRagStorage(this IServiceCollection services)
     {
         services.AddSingleton<IQdrantIndexStorage, QdrantIndexStorage>();
-        services.AddSingleton<ICodeIndexStore, CodeIndexStore>();
+        services.AddSingleton<CodeIndexStore>();
+        services.AddSingleton<ICodeIndexStore>(sp => sp.GetRequiredService<CodeIndexStore>());
+        services.AddSingleton<IKnowledgeStore>(sp => sp.GetRequiredService<CodeIndexStore>());
         return services;
     }
 
     public static IServiceCollection AddRagIndexing(this IServiceCollection services)
     {
-        services.AddSingleton<ICodeIndexer, CodeIndexer>();
+        services.AddSingleton<CodeIndexer>();
+        services.AddSingleton<ICodeIndexer>(sp => sp.GetRequiredService<CodeIndexer>());
+        services.AddSingleton<IIndexer>(sp => sp.GetRequiredService<CodeIndexer>());
         return services;
     }
 
     public static IServiceCollection AddRagRetrieval(this IServiceCollection services)
     {
-        services.AddSingleton<ICodeQueryStore, CodeQueryStore>();
-        services.AddSingleton<ICodeRetriever, CodeRetriever>();
+        services.AddSingleton<CodeQueryStore>();
+        services.AddSingleton<ICodeQueryStore>(sp => sp.GetRequiredService<CodeQueryStore>());
+        services.AddSingleton<IQueryStore>(sp => sp.GetRequiredService<CodeQueryStore>());
+        services.AddSingleton<CodeRetriever>();
+        services.AddSingleton<ICodeRetriever>(sp => sp.GetRequiredService<CodeRetriever>());
+        services.AddSingleton<IRetriever>(sp => sp.GetRequiredService<CodeRetriever>());
+        services.AddSingleton<KnowledgeQueryStore>();
         return services;
     }
 
@@ -83,6 +99,20 @@ public static class RagServiceCollectionExtensions
         configure?.Invoke(options);
         services.AddSingleton(options);
         services.AddSingleton<IRagPromptBuilder, RagPromptBuilder>();
+        return services;
+    }
+
+    public static IServiceCollection AddRagWorkspace(this IServiceCollection services)
+    {
+        services.AddSingleton<IWorkspaceStore, JsonWorkspaceStore>();
+        services.AddSingleton<IWorkspaceManager>(sp =>
+            new WorkspaceManager(sp.GetRequiredService<IWorkspaceStore>()));
+        return services;
+    }
+
+    public static IServiceCollection AddRagParsers(this IServiceCollection services)
+    {
+        services.AddSingleton<IDocumentParser, MarkdownParser>();
         return services;
     }
 }

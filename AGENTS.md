@@ -97,6 +97,22 @@ Chat is selected at runtime via `LLM:ChatProvider` / `LLM:EmbeddingProvider` = `
 - Default models differ between code (`gemma3:1b`) and `appsettings.json` (`qwen2.5:1.5b`); the config value wins.
 - Streaming reads use `HttpCompletionOption.ResponseHeadersRead` + line-by-line parsing; JSON parse failures are swallowed per-line (return null) so a bad chunk is skipped rather than aborting the stream.
 
+## Commit Guidelines
+
+Trigger auto-commit at these natural breakpoints:
+
+1. **Feature milestone** — a complete feature phase is done, all tests pass
+2. **Bug fix** — a bug is fixed, confirmed by test pass
+3. **Before context switch** — stopping work on one thing to start something else
+4. **All green** — test count >= previous run, all passing, build clean
+5. **End of session** — before signing off, commit remaining work-in-progress
+
+Before committing:
+- `dotnet test AI.Assistant.Tests` — must pass
+- `dotnet build AI.Assistant.slnx` — zero errors
+- `git diff --stat` — review scope
+- Write commit per `contextual-commit` format (action lines: intent, decision, rejected, constraint, learned)
+
 ## Dependencies
 
 - CommunityToolkit.Mvvm 8.4.0

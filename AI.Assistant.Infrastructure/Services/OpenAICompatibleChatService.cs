@@ -79,14 +79,17 @@ public class OpenAICompatibleChatService : IChatService
 
         var httpRequest = CreateRequest(request);
         using var response = await _httpClient.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-        response.EnsureSuccessStatusCode();
+
+        if (!response.IsSuccessStatusCode)
+            await ThrowWithErrorBodyAsync(response);
 
         using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream, Encoding.UTF8);
 
-        while (!reader.EndOfStream)
+        while (true)
         {
             var line = await reader.ReadLineAsync(cancellationToken);
+            if (line is null) break;
             if (string.IsNullOrWhiteSpace(line)) continue;
 
             // 跳过 SSE 前缀 "data: "
@@ -149,6 +152,31 @@ public class OpenAICompatibleChatService : IChatService
 
         messages.Add(new OpenAIMessage { Role = "user", Content = userMessage });
         return messages;
+    }
+
+    private static async Task ThrowWithErrorBodyAsync(HttpResponseMessage response)
+    {
+        var body = await response.Content.ReadAsStringAsync();
+        var message = $"HTTP {(int)response.StatusCode}";
+
+        if (!string.IsNullOrWhiteSpace(body))
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(body);
+                var error = doc.RootElement.TryGetProperty("error", out var err)
+                    ? err.GetString()
+                    : body;
+                if (!string.IsNullOrWhiteSpace(error))
+                    message += $": {error}";
+            }
+            catch
+            {
+                message += body.Length > 200 ? $": {body[..200]}..." : $": {body}";
+            }
+        }
+
+        throw new HttpRequestException(message);
     }
 }
 

@@ -1,8 +1,10 @@
 using System.Diagnostics;
+using AI.Assistant.Core.Interfaces;
 using AI.Assistant.Core.Rag.Context;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
+using AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -14,17 +16,23 @@ public class RagQueryService : IRagQueryService
     private readonly IRagContextBuilder _contextBuilder;
     private readonly IOptions<RagOptions> _options;
     private readonly ILogger<RagQueryService> _logger;
+    private readonly IEmbeddingService? _embedding;
+    private readonly KnowledgeQueryStore? _knowledgeQueryStore;
 
     public RagQueryService(
         ICodeRetriever retriever,
         IRagContextBuilder contextBuilder,
         IOptions<RagOptions> options,
-        ILogger<RagQueryService> logger)
+        ILogger<RagQueryService> logger,
+        IEmbeddingService? embedding = null,
+        KnowledgeQueryStore? knowledgeQueryStore = null)
     {
         _retriever = retriever;
         _contextBuilder = contextBuilder;
         _options = options;
         _logger = logger;
+        _embedding = embedding;
+        _knowledgeQueryStore = knowledgeQueryStore;
     }
 
     public async Task<RagQueryResult> QueryAsync(
@@ -41,77 +49,111 @@ public class RagQueryService : IRagQueryService
                 userMessage, triggered, matchedKeyword);
 
         if (!triggered)
-        {
             return BuildSkippedResult(userMessage, opts);
-        }
 
         var sw = Stopwatch.StartNew();
-        IList<RetrievedCodeChunk> chunks;
+
+        // === Phase 1: Code retrieval (existing) ===
+        IList<RetrievedCodeChunk> codeChunks;
         try
         {
-            chunks = await _retriever.VectorSearchAsync(
+            codeChunks = await _retriever.VectorSearchAsync(
                 userMessage, cancellationToken: cancellationToken);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
+        catch (OperationCanceledException) { throw; }
         catch (Exception ex)
         {
             if (opts.EnableDebugLog)
-                _logger.LogWarning(ex, "RAG retrieval error for query '{Query}'", userMessage);
-
+                _logger.LogWarning(ex, "RAG code retrieval error for query '{Query}'", userMessage);
             return BuildErrorResult(userMessage, ex.Message, opts);
         }
-        sw.Stop();
 
-        var rawCount = chunks.Count;
+        var codeRawCount = codeChunks.Count;
 
-        IList<RetrievedCodeChunk> filtered = chunks;
-        if (opts.MinimumScoreThreshold > 0 && chunks.Count > 0)
+        var filteredCode = opts.MinimumScoreThreshold > 0 && codeChunks.Count > 0
+            ? codeChunks.Where(c => c.Score >= opts.MinimumScoreThreshold).ToList()
+            : codeChunks.ToList();
+
+        // === Phase 2: Cross-source retrieval ===
+        IList<RetrievedKnowledgeChunk> mixedResults = [];
+        if (_embedding is not null && _knowledgeQueryStore is not null)
         {
-            filtered = chunks
-                .Where(c => c.Score >= opts.MinimumScoreThreshold)
-                .ToList();
+            try
+            {
+                var queryVector = await _embedding.EmbedAsync(userMessage, cancellationToken);
+                mixedResults = await _knowledgeQueryStore.SearchAsync(
+                    queryVector, opts.MaxTopK, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                if (opts.EnableDebugLog)
+                    _logger.LogWarning(ex, "Cross-source retrieval failed, falling back to code-only");
+            }
         }
 
-        var afterFilter = filtered.Count;
+        sw.Stop();
 
-        if (filtered.Count == 0)
+        // === Phase 3: Merge & format ===
+        var merged = MergeResults(filteredCode, mixedResults, opts);
+
+        if (merged.Count == 0)
         {
             if (opts.EnableDebugLog)
                 _logger.LogDebug(
-                    "RAG no results after threshold: raw={Raw}, afterFilter={After}, threshold={Threshold}",
-                    rawCount, afterFilter, opts.MinimumScoreThreshold);
+                    "RAG no results after merge: codeRaw={CodeRaw}, codeAfterFilter={CodeAfter}, mixed={Mixed}",
+                    codeRawCount, filteredCode.Count, mixedResults.Count);
 
             return BuildEmptyResult(userMessage, opts, matchedKeyword,
-                sw.Elapsed, rawCount, afterFilter, chunks);
+                sw.Elapsed, codeRawCount, filteredCode.Count, codeChunks);
         }
 
-        var sw2 = Stopwatch.StartNew();
-        var context = await _contextBuilder.BuildAsync(filtered, cancellationToken);
-        sw2.Stop();
+        var contextText = string.Join("\n---\n", merged.Select(x => x.Text));
 
         if (opts.EnableDebugLog)
             _logger.LogDebug(
-                "RAG success: raw={Raw}, afterFilter={After}, used={Used}, " +
-                "tokens={Tokens}, retrievalElapsed={RetElapsed}ms, buildElapsed={BuildElapsed}ms",
-                rawCount, afterFilter, context.TotalUsed, context.EstimatedTokens,
-                sw.ElapsedMilliseconds, sw2.ElapsedMilliseconds);
+                "RAG success: codeRaw={CodeRaw}, codeAfterFilter={CodeAfter}, mixed={Mixed}, used={Used}, tokens={Tokens}",
+                codeRawCount, filteredCode.Count, mixedResults.Count,
+                merged.Count, contextText.Length / 3);
 
         var debugInfo = opts.EnableDebugInfo
             ? BuildDebugInfo(userMessage, matchedKeyword, opts.MinimumScoreThreshold,
-                sw.Elapsed, sw2.Elapsed, rawCount, afterFilter, context, chunks)
+                sw.Elapsed, codeRawCount, filteredCode.Count, merged.Count, contextText, codeChunks)
             : null;
 
         return new RagQueryResult
         {
             HasContext = true,
-            ContextText = context.ContextText,
-            ChunksUsed = context.TotalUsed,
-            EstimatedTokens = context.EstimatedTokens,
+            ContextText = contextText,
+            ChunksUsed = merged.Count,
+            EstimatedTokens = contextText.Length / 3,
             DebugInfo = debugInfo
         };
+    }
+
+    // ============ 合并逻辑 ============
+
+    private static List<(float Score, string Text)> MergeResults(
+        IList<RetrievedCodeChunk> codeResults,
+        IList<RetrievedKnowledgeChunk> mixedResults,
+        RagOptions opts)
+    {
+        var threshold = opts.MinimumScoreThreshold;
+
+        var items = new List<(float Score, string Text)>();
+
+        foreach (var r in codeResults)
+            items.Add((r.Score, $"[代码] {r.Chunk.Content}"));
+
+        foreach (var r in mixedResults)
+        {
+            if (threshold <= 0 || r.Score >= threshold)
+                items.Add((r.Score, $"[文档] {r.Chunk.Content}"));
+        }
+
+        return items
+            .OrderByDescending(x => x.Score)
+            .Take(opts.MaxTopK)
+            .ToList();
     }
 
     // ============ 结果构造 ============
@@ -172,10 +214,10 @@ public class RagQueryService : IRagQueryService
         string? matchedKeyword,
         double threshold,
         TimeSpan retrievalElapsed,
-        TimeSpan buildElapsed,
         int rawCount,
         int afterFilter,
-        RagContext context,
+        int totalUsed,
+        string contextText,
         IList<RetrievedCodeChunk> chunks)
     {
         return new RagDebugInfo
@@ -185,11 +227,11 @@ public class RagQueryService : IRagQueryService
             MatchedKeyword = matchedKeyword,
             MinimumScoreThreshold = threshold,
             RetrievalElapsed = retrievalElapsed,
-            ContextBuildElapsed = buildElapsed,
+            ContextBuildElapsed = TimeSpan.Zero,
             RawChunksReturned = rawCount,
             ChunksAfterFilter = afterFilter,
-            ChunksUsedByBuilder = context.TotalUsed,
-            EstimatedTokens = context.EstimatedTokens,
+            ChunksUsedByBuilder = totalUsed,
+            EstimatedTokens = contextText.Length / 3,
             Chunks = MapChunks(chunks)
         };
     }

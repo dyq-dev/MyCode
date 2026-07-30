@@ -4,6 +4,8 @@ using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Core.Rag.Options;
 using Microsoft.Extensions.Options;
 
+#pragma warning disable CS0618 // 保留旧接口作为兼容层
+
 namespace AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 
 /// <summary>
@@ -11,7 +13,7 @@ namespace AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 /// 流程：Query → Embed → Search（ICodeQueryStore）→ TopK RetrievedCodeChunk。
 /// 不依赖 IVectorStore，不关心底层向量库细节。
 /// </summary>
-public class CodeRetriever : ICodeRetriever
+public class CodeRetriever : ICodeRetriever, IRetriever
 {
     private readonly IEmbeddingService _embedding;
     private readonly ICodeQueryStore _queryStore;
@@ -39,5 +41,16 @@ public class CodeRetriever : ICodeRetriever
         var results = await _queryStore.SearchAsync(vector, actualTopK, cancellationToken);
 
         return results;
+    }
+
+    async Task<IList<RetrievedKnowledgeChunk>> IRetriever.VectorSearchAsync(
+        string query, int topK, CancellationToken cancellationToken)
+    {
+        var results = await VectorSearchAsync(query, topK, cancellationToken);
+        return results.Select(r => new RetrievedKnowledgeChunk
+        {
+            Chunk = r.Chunk,
+            Score = r.Score
+        }).ToList();
     }
 }

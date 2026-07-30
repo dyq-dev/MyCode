@@ -13,9 +13,42 @@
         Background="{StaticResource BackgroundBrush}"
         FontFamily="{StaticResource PrimaryFont}">
 
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="ToggleButton.Checked" SourceName="SidebarToggle">
+            <EventTrigger.Actions>
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="SidebarColumn"
+                                         Storyboard.TargetProperty="MaxWidth"
+                                         To="400" Duration="0:0:0.3">
+                            <DoubleAnimation.EasingFunction>
+                                <CubicEase EasingMode="EaseInOut" />
+                            </DoubleAnimation.EasingFunction>
+                        </DoubleAnimation>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger.Actions>
+        </EventTrigger>
+        <EventTrigger RoutedEvent="ToggleButton.Unchecked" SourceName="SidebarToggle">
+            <EventTrigger.Actions>
+                <BeginStoryboard>
+                    <Storyboard>
+                        <DoubleAnimation Storyboard.TargetName="SidebarColumn"
+                                         Storyboard.TargetProperty="MaxWidth"
+                                         To="48" Duration="0:0:0.3">
+                            <DoubleAnimation.EasingFunction>
+                                <CubicEase EasingMode="EaseInOut" />
+                            </DoubleAnimation.EasingFunction>
+                        </DoubleAnimation>
+                    </Storyboard>
+                </BeginStoryboard>
+            </EventTrigger.Actions>
+        </EventTrigger>
+    </Window.Triggers>
+
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="240" MinWidth="180" MaxWidth="400" />
+            <ColumnDefinition x:Name="SidebarColumn" Width="240" MinWidth="48" MaxWidth="400" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
         </Grid.ColumnDefinitions>
@@ -40,17 +73,33 @@
 
                 <!-- Logo -->
                 <Border Grid.Row="0" Padding="16,16,16,12">
-                    <StackPanel Orientation="Horizontal">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
                         <Border Background="{StaticResource AccentBrush}"
                                 CornerRadius="8"
-                                Width="32" Height="32"
-                                Margin="0,0,10,0">
+                                Width="32" Height="32">
                             <Path Data="M6,18 L10,18 L10,22 L6,22 Z M14,6 L14,10 L18,10 L18,6 Z M2,12 C2,6.48 6.48,2 12,2 C17.52,2 22,6.48 22,12 C22,17.52 17.52,22 12,22 C6.48,22 2,17.52 2,12 Z"
                                   Fill="White"
                                   Stretch="Uniform"
                                   Width="18" Height="18" />
                         </Border>
-                        <StackPanel VerticalAlignment="Center">
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Opacity" Value="1" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                            <Setter Property="Opacity" Value="0" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
                             <TextBlock Text="AI Assistant"
                                        FontSize="15"
                                        FontWeight="SemiBold"
@@ -60,7 +109,44 @@
                                        Foreground="{StaticResource TextTertiaryBrush}"
                                        Margin="0,1,0,0" />
                         </StackPanel>
-                    </StackPanel>
+
+                        <ToggleButton x:Name="SidebarToggle"
+                                      Grid.Column="2"
+                                      IsChecked="True"
+                                      Width="28" Height="28"
+                                      VerticalAlignment="Center"
+                                      Cursor="Hand"
+                                      Background="Transparent"
+                                      BorderThickness="0">
+                            <Path Data="M4,8 L20,8 M4,14 L20,14 M4,20 L20,20"
+                                  Stroke="{StaticResource TextSecondaryBrush}"
+                                  StrokeThickness="1.5"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round" />
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border x:Name="bg"
+                                                        Background="{TemplateBinding Background}"
+                                                        CornerRadius="6"
+                                                        Width="28" Height="28"
+                                                        Padding="5">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="bg" Property="Background" Value="{StaticResource SidebarHoverBrush}" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
+                    </Grid>
                 </Border>
 
                 <!-- New Chat Button -->
@@ -81,7 +167,31 @@
                                        Margin="0,0,8,0" />
                             <TextBlock Text="新建对话"
                                        FontSize="13"
-                                       VerticalAlignment="Center" />
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </Grid>
                     </Button>
                 </Border>
@@ -115,16 +225,44 @@
                                     CornerRadius="6"
                                     Width="22" Height="22"
                                     VerticalAlignment="Center">
-                                <TextBlock Text="&#x1F50D;"
-                                           FontSize="11"
-                                           HorizontalAlignment="Center"
-                                           VerticalAlignment="Center" />
+                                <Path Data="M15,15 L21,21 M10,17 A7,7 0 1,1 10,3 A7,7 0 0,1 10,17 Z"
+                                      Stroke="{StaticResource TextSecondaryBrush}"
+                                      StrokeThickness="1.5"
+                                      StrokeLineJoin="Round"
+                                      Stretch="Uniform"
+                                      Width="12" Height="12"
+                                      HorizontalAlignment="Center"
+                                      VerticalAlignment="Center" />
                             </Border>
                             <TextBlock Grid.Column="1"
                                        Text="Knowledge Playground"
                                        TextTrimming="CharacterEllipsis"
                                        VerticalAlignment="Center"
-                                       Margin="6,0,0,0" />
+                                       Margin="6,0,0,0">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </Grid>
                     </Button>
                 </Border>
@@ -141,7 +279,31 @@
                                        FontSize="11"
                                        FontWeight="SemiBold"
                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                       VerticalAlignment="Center" />
+                                       VerticalAlignment="Center">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Opacity" Value="1" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                <DataTrigger.EnterActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.EnterActions>
+                                                <DataTrigger.ExitActions>
+                                                    <BeginStoryboard>
+                                                        <Storyboard>
+                                                            <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                        </Storyboard>
+                                                    </BeginStoryboard>
+                                                </DataTrigger.ExitActions>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                             <Button Grid.Column="1"
                                     Content="+"
                                     FontSize="14"
@@ -171,7 +333,31 @@
                                                    Text="{Binding Name}"
                                                    FontSize="12"
                                                    VerticalAlignment="Center"
-                                                   TextTrimming="CharacterEllipsis" />
+                                                   TextTrimming="CharacterEllipsis">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Opacity" Value="1" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                            <DataTrigger.EnterActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.EnterActions>
+                                                            <DataTrigger.ExitActions>
+                                                                <BeginStoryboard>
+                                                                    <Storyboard>
+                                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                                    </Storyboard>
+                                                                </BeginStoryboard>
+                                                            </DataTrigger.ExitActions>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                         <Border Grid.Column="2"
                                                 CornerRadius="4"
                                                 Padding="5,1"
@@ -207,6 +393,29 @@
                             <ColumnDefinition Width="Auto" />
                         </Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Setter Property="Opacity" Value="1" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
                             <TextBlock Text="RAG 搜索"
                                        FontSize="12"
                                        FontWeight="SemiBold"
@@ -302,16 +511,42 @@
                                                             CornerRadius="6"
                                                             Width="22" Height="22"
                                                             VerticalAlignment="Center">
-                                                        <TextBlock Text="&#x1F4AC;"
-                                                                   FontSize="11"
-                                                                   HorizontalAlignment="Center"
-                                                                   VerticalAlignment="Center" />
+                                                        <Path Data="M3,3 L19,3 A2,2 0 0,1 21,5 L21,15 A2,2 0 0,1 19,17 L10,17 L5,21 L5,17 L3,17 A2,2 0 0,1 1,15 L1,5 A2,2 0 0,1 3,3 Z"
+                                                              Fill="{StaticResource TextTertiaryBrush}"
+                                                              Stretch="Uniform"
+                                                              Width="12" Height="12"
+                                                              HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center" />
                                                     </Border>
                                                     <TextBlock Grid.Column="1"
                                                                Text="{Binding Title}"
                                                                TextTrimming="CharacterEllipsis"
                                                                VerticalAlignment="Center"
-                                                               Margin="6,0,0,0" />
+                                                               Margin="6,0,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Opacity" Value="1" />
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                                                        <DataTrigger.EnterActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </DataTrigger.EnterActions>
+                                                                        <DataTrigger.ExitActions>
+                                                                            <BeginStoryboard>
+                                                                                <Storyboard>
+                                                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                                                </Storyboard>
+                                                                            </BeginStoryboard>
+                                                                        </DataTrigger.ExitActions>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </Grid>
                                             </Button>
 
@@ -347,7 +582,31 @@
                     <TextBlock Text="v1.0.0"
                                FontSize="11"
                                Foreground="{StaticResource TextTertiaryBrush}"
-                               HorizontalAlignment="Center" />
+                               HorizontalAlignment="Center">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Opacity" Value="1" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsChecked, ElementName=SidebarToggle}" Value="False">
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.15" />
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
                 </Border>
             </Grid>
         </Border>
@@ -400,10 +659,12 @@
                                 CornerRadius="8"
                                 Width="32" Height="32"
                                 Margin="0,0,12,0">
-                            <TextBlock Text="&#x1F4AC;"
-                                       FontSize="16"
-                                       HorizontalAlignment="Center"
-                                       VerticalAlignment="Center" />
+                            <Path Data="M3,3 L19,3 A2,2 0 0,1 21,5 L21,15 A2,2 0 0,1 19,17 L10,17 L5,21 L5,17 L3,17 A2,2 0 0,1 1,15 L1,5 A2,2 0 0,1 3,3 Z"
+                                  Fill="{StaticResource AccentBrush}"
+                                  Stretch="Uniform"
+                                  Width="16" Height="16"
+                                  HorizontalAlignment="Center"
+                                  VerticalAlignment="Center" />
                         </Border>
                         <TextBlock Text="{Binding CurrentConversation.Title, FallbackValue='新对话'}"
                                    FontSize="15"
@@ -471,14 +732,17 @@
 
                                         <!-- Assistant message -->
                                         <Border Grid.Column="0"
-                                                MaxWidth="750"
+                                                MaxWidth="700"
                                                 Padding="16,12"
-                                                Margin="60,0,80,0"
-                                                VerticalAlignment="Top">
+                                                Margin="20,0,60,0"
+                                                VerticalAlignment="Top"
+                                                Background="{StaticResource AssistantBubbleBrush}"
+                                                BorderBrush="{StaticResource AccentLightBrush}"
+                                                BorderThickness="1"
+                                                CornerRadius="4,16,16,16"
+                                                Effect="{StaticResource SmallShadow}">
                                             <Border.Style>
                                                 <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="{StaticResource AssistantBubbleBrush}" />
-                                                    <Setter Property="CornerRadius" Value="12" />
                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsAssistant}" Value="True">
@@ -600,14 +864,14 @@
 
                                         <!-- User message -->
                                         <Border Grid.Column="1"
-                                                MaxWidth="700"
+                                                MaxWidth="600"
                                                 Padding="14,10"
-                                                Margin="80,0,60,0"
-                                                VerticalAlignment="Top">
+                                                Margin="60,0,20,0"
+                                                VerticalAlignment="Top"
+                                                Background="{StaticResource UserBubbleBrush}"
+                                                CornerRadius="16,16,4,16">
                                             <Border.Style>
                                                 <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="{StaticResource UserBubbleBrush}" />
-                                                    <Setter Property="CornerRadius" Value="12" />
                                                     <Setter Property="Visibility" Value="Collapsed" />
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsUser}" Value="True">
@@ -616,24 +880,11 @@
                                                     </Style.Triggers>
                                                 </Style>
                                             </Border.Style>
-                                            <Grid>
-                                                <Grid.RowDefinitions>
-                                                    <RowDefinition Height="Auto" />
-                                                    <RowDefinition Height="6" />
-                                                    <RowDefinition Height="Auto" />
-                                                </Grid.RowDefinitions>
-                                                <TextBlock Text="你"
-                                                           FontSize="12"
-                                                           FontWeight="SemiBold"
-                                                           Foreground="#9CA3AF"
-                                                           HorizontalAlignment="Right" />
-                                                <TextBlock Grid.Row="2"
-                                                           Text="{Binding Content}"
-                                                           TextWrapping="Wrap"
-                                                           FontSize="14"
-                                                           LineHeight="22"
-                                                           Foreground="{StaticResource TextOnDarkBrush}" />
-                                            </Grid>
+                                            <TextBlock Text="{Binding Content}"
+                                                       TextWrapping="Wrap"
+                                                       FontSize="14"
+                                                       LineHeight="22"
+                                                       Foreground="{StaticResource TextOnDarkBrush}" />
                                         </Border>
                                     </Grid>
                                 </Border>

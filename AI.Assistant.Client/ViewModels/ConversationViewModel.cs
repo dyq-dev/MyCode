@@ -6,6 +6,7 @@ using AI.Assistant.Infrastructure.Services;
 using AI.Assistant.Infrastructure.Services.Chat;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using AI.Assistant.Infrastructure.Services.Rag.Persistence;
 
 namespace AI.Assistant.Client.ViewModels;
 
@@ -17,6 +18,9 @@ public partial class ConversationViewModel : ObservableObject
     private readonly IChatService? _chatService;
     private readonly MemoryService? _memory;
     private readonly bool _showRagDetails;
+    private readonly IConversationStore? _store;
+    private string _id = Guid.NewGuid().ToString();
+    private DateTime _createdAt = DateTime.Now;
     private readonly string _sessionId = Guid.NewGuid().ToString();
     private CancellationTokenSource? _streamCts;
     private readonly DispatcherTimer _timer;
@@ -37,6 +41,8 @@ public partial class ConversationViewModel : ObservableObject
 
     [ObservableProperty]
     private string _title = "新对话";
+
+    partial void OnTitleChanged(string value) => SaveToStore();
 
     [ObservableProperty]
     private bool _isSelected;
@@ -64,11 +70,32 @@ public partial class ConversationViewModel : ObservableObject
         _typeTimer.Tick += TypeTimer_Tick;
     }
 
-    public ConversationViewModel(IChatService chatService, MemoryService? memory = null, bool showRagDetails = true) : this()
+    public ConversationViewModel(IChatService chatService, MemoryService? memory = null, bool showRagDetails = true, IConversationStore? store = null) : this()
     {
         _chatService = chatService;
         _memory = memory;
         _showRagDetails = showRagDetails;
+        _store = store;
+    }
+
+    public string ConversationId => _id;
+    public int MessageCount => Messages.Count;
+
+    public void LoadFrom(Conversation conv)
+    {
+        _id = conv.Id.ToString();
+        _createdAt = conv.CreatedAt;
+        Messages.Clear();
+        foreach (var msg in conv.Messages)
+        {
+            Messages.Add(new ChatMessageViewModel
+            {
+                Content = msg.Content,
+                Role = msg.Role,
+                Timestamp = msg.Timestamp
+            });
+        }
+        Title = conv.Title;
     }
 
     /// <summary>
@@ -321,6 +348,8 @@ public partial class ConversationViewModel : ObservableObject
                     assistantResponse: assistantMessage.Content,
                     cancellationToken: _streamCts.Token);
             }
+
+            SaveToStore();
         }
         catch (OperationCanceledException)
         {
@@ -350,6 +379,37 @@ public partial class ConversationViewModel : ObservableObject
     private void CancelStream()
     {
         _streamCts?.Cancel();
+    }
+
+    public void SaveToStore()
+    {
+        if (_store is null) return;
+
+        try
+        {
+            _store.SaveConversationAsync(ToConversation()).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[SaveConversation] 失败: {ex.Message}");
+        }
+    }
+
+    private Conversation ToConversation()
+    {
+        return new Conversation
+        {
+            Id = Guid.Parse(_id),
+            Title = Title,
+            CreatedAt = _createdAt,
+            UpdatedAt = DateTime.Now,
+            Messages = Messages.Select(m => new ChatMessage
+            {
+                Content = m.Content,
+                Role = m.Role,
+                Timestamp = m.Timestamp
+            }).ToList()
+        };
     }
 }
 

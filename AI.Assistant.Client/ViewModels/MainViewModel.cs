@@ -1,10 +1,14 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
 using AI.Assistant.Core.Interfaces;
+using AI.Assistant.Core.Models;
 using AI.Assistant.Core.Rag.Interfaces;
 using AI.Assistant.Core.Rag.Models;
 using AI.Assistant.Infrastructure.Services;
+using AI.Assistant.Infrastructure.Services.Chat;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Win32;
@@ -22,6 +26,8 @@ public partial class MainViewModel : ObservableObject
     private readonly IEnumerable<IDocumentParser> _parsers;
     private readonly IKnowledgeStore _knowledgeStore;
     private readonly IIndexer _indexer;
+    private readonly RagChatService _ragService;
+    private readonly IConversationStore _convStore;
 
     /// <summary>当前会话切换事件</summary>
     public event EventHandler<ConversationViewModel>? ConversationChanged;
@@ -36,6 +42,14 @@ public partial class MainViewModel : ObservableObject
 
     public bool ShowRagDetails { get; }
 
+    [ObservableProperty]
+    private bool _isRagEnabled = true;
+
+    partial void OnIsRagEnabledChanged(bool value)
+    {
+        _ragService.IsRagEnabled = value;
+    }
+
     public ObservableCollection<ConversationViewModel> Conversations { get; } = [];
 
     public ObservableCollection<KnowledgeSource> Sources { get; } = [];
@@ -46,6 +60,8 @@ public partial class MainViewModel : ObservableObject
         IEnumerable<IDocumentParser> parsers,
         IKnowledgeStore knowledgeStore,
         IIndexer indexer,
+        RagChatService ragService,
+        IConversationStore conversationStore,
         MemoryService? memory = null,
         bool isDevMode = true)
     {
@@ -54,13 +70,50 @@ public partial class MainViewModel : ObservableObject
         _parsers = parsers;
         _knowledgeStore = knowledgeStore;
         _indexer = indexer;
+        _ragService = ragService;
+        _convStore = conversationStore;
         _memory = memory;
         HasPlayground = isDevMode;
         ShowRagDetails = isDevMode;
-        NewConversation();
+
+        LoadSavedConversations();
 
         foreach (var source in _workspace.GetSources())
             Sources.Add(source);
+    }
+
+    private void LoadSavedConversations()
+    {
+        try
+        {
+            var saved = _convStore.LoadIndexAsync().GetAwaiter().GetResult();
+
+            foreach (var conv in saved)
+            {
+                var vm = new ConversationViewModel(_chatService!, _memory, ShowRagDetails, _convStore);
+
+                // 直接加载完整会话（含消息）
+                var full = _convStore.LoadConversationAsync(conv.Id.ToString()).GetAwaiter().GetResult();
+                vm.LoadFrom(full ?? conv);
+
+                Conversations.Add(vm);
+            }
+
+            if (Conversations.Count > 0)
+            {
+                CurrentConversation = Conversations[0];
+                Conversations[0].IsSelected = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[MainVM] 加载会话失败: {ex}");
+        }
+
+        if (Conversations.Count == 0)
+        {
+            NewConversation();
+        }
     }
 
     partial void OnCurrentConversationChanged(ConversationViewModel? oldValue, ConversationViewModel? newValue)
@@ -69,7 +122,19 @@ public partial class MainViewModel : ObservableObject
         if (newValue is not null)
         {
             newValue.IsSelected = true;
+            _ = LoadConversationMessagesAsync(newValue);
             ConversationChanged?.Invoke(this, newValue);
+        }
+    }
+
+    private async Task LoadConversationMessagesAsync(ConversationViewModel vm)
+    {
+        if (vm.MessageCount > 0) return;
+
+        var full = await _convStore.LoadConversationAsync(vm.ConversationId);
+        if (full is not null && full.Messages.Count > 0)
+        {
+            vm.LoadFrom(full);
         }
     }
 
@@ -77,7 +142,7 @@ public partial class MainViewModel : ObservableObject
     private void NewConversation()
     {
         var conversation = _chatService is not null
-            ? new ConversationViewModel(_chatService, _memory, ShowRagDetails)
+            ? new ConversationViewModel(_chatService, _memory, ShowRagDetails, _convStore)
             : new ConversationViewModel();
         conversation.Title = $"新对话 {Conversations.Count + 1}";
         Conversations.Insert(0, conversation);
@@ -98,6 +163,8 @@ public partial class MainViewModel : ObservableObject
         {
             CurrentConversation = Conversations.FirstOrDefault();
         }
+
+        _ = _convStore.DeleteConversationAsync(conversation.ConversationId);
     }
 
     [RelayCommand]
@@ -235,5 +302,59 @@ public partial class MainViewModel : ObservableObject
                 System.Windows.MessageBoxButton.OK,
                 System.Windows.MessageBoxImage.Error);
         }
+    }
+
+    [RelayCommand]
+    private void RenameConversation(ConversationViewModel conversation)
+    {
+        var textBox = new System.Windows.Controls.TextBox
+        {
+            Text = conversation.Title,
+            FontSize = 14,
+            Margin = new System.Windows.Thickness(0, 0, 0, 12),
+            MinWidth = 300
+        };
+        textBox.Focus();
+
+        Window? window = null;
+        window = new Window
+        {
+            Title = "重命名对话",
+            Width = 360,
+            Height = 140,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            Owner = Application.Current.MainWindow,
+            Content = new StackPanel
+            {
+                Margin = new System.Windows.Thickness(16),
+                Children =
+                {
+                    new System.Windows.Controls.TextBlock
+                    {
+                        Text = "输入新名称:",
+                        FontSize = 13,
+                        Margin = new System.Windows.Thickness(0, 0, 0, 8)
+                    },
+                    textBox,
+                    new System.Windows.Controls.Button
+                    {
+                        Content = "确定",
+                        Width = 80,
+                        Height = 30,
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+                        IsDefault = true,
+                        Command = new RelayCommand(() =>
+                        {
+                            var name = textBox.Text.Trim();
+                            if (name.Length > 0)
+                                conversation.Title = name;
+                            window!.Close();
+                        })
+                    }
+                }
+            }
+        };
+
+        window.ShowDialog();
     }
 }

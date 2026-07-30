@@ -8,6 +8,7 @@ using AI.Assistant.Infrastructure.Services.Rag.Chunking.Strategies;
 using AI.Assistant.Infrastructure.Services.Rag.Context;
 using AI.Assistant.Infrastructure.Services.Rag.Indexing;
 using AI.Assistant.Infrastructure.Services.Rag.Parsers;
+using AI.Assistant.Infrastructure.Services.Rag.Persistence;
 using AI.Assistant.Infrastructure.Services.Rag.Prompt;
 using AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
@@ -101,6 +102,7 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IWorkspaceStore, JsonWorkspaceStore>();
         services.AddSingleton<IWorkspaceManager>(sp =>
             new WorkspaceManager(sp.GetRequiredService<IWorkspaceStore>()));
+        services.AddSingleton<IConversationStore, ConversationStore>();
         return services;
     }
 

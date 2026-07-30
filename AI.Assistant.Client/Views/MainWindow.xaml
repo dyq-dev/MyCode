@@ -33,6 +33,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                     <RowDefinition Height="*" />
                     <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
@@ -196,8 +197,67 @@
                     </StackPanel>
                 </Border>
 
+                <!-- RAG Toggle -->
+                <Border Grid.Row="4" Padding="12,2,12,6"
+                        BorderBrush="{StaticResource DividerBrush}"
+                        BorderThickness="0,1,0,0">
+                    <Grid Margin="4,6,4,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel VerticalAlignment="Center">
+                            <TextBlock Text="RAG 搜索"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource TextSecondaryBrush}" />
+                            <TextBlock Text="关闭后仅使用 AI 自身知识"
+                                       FontSize="10"
+                                       Foreground="{StaticResource TextTertiaryBrush}"
+                                       Margin="0,1,0,0" />
+                        </StackPanel>
+                        <ToggleButton Grid.Column="1"
+                                      IsChecked="{Binding IsRagEnabled}"
+                                      Width="40" Height="22"
+                                      VerticalAlignment="Center"
+                                      BorderThickness="0">
+                            <ToggleButton.Style>
+                                <Style TargetType="ToggleButton">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ToggleButton">
+                                                <Border x:Name="Bg"
+                                                        Width="40" Height="22"
+                                                        CornerRadius="11"
+                                                        Background="#CBD5E1"
+                                                        BorderThickness="0"
+                                                        Cursor="Hand">
+                                                    <Border x:Name="Knob"
+                                                            Width="18" Height="18"
+                                                            CornerRadius="9"
+                                                            Background="White"
+                                                            HorizontalAlignment="Left"
+                                                            Margin="2,0,0,0"
+                                                            Effect="{StaticResource SmallShadow}" />
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsChecked" Value="True">
+                                                        <Setter TargetName="Bg" Property="Background" Value="{StaticResource AccentBrush}" />
+                                                        <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                                                        <Setter TargetName="Knob" Property="Margin" Value="0,0,2,0" />
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ToggleButton.Style>
+                        </ToggleButton>
+                    </Grid>
+                </Border>
+
                 <!-- Conversation List -->
-                <Border Grid.Row="4" Padding="8,0,8,8">
+                <Border Grid.Row="5" Padding="8,0,8,8">
                     <ScrollViewer VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Disabled">
                         <ItemsControl ItemsSource="{Binding Conversations}">
@@ -214,6 +274,13 @@
                                                 </Style.Triggers>
                                             </Style>
                                         </Border.Style>
+                                        <Border.ContextMenu>
+                                            <ContextMenu>
+                                                <MenuItem Header="重命名"
+                                                          Command="{Binding DataContext.RenameConversationCommand, Source={x:Reference RootWindow}}"
+                                                          CommandParameter="{Binding}" />
+                                            </ContextMenu>
+                                        </Border.ContextMenu>
 
                                         <Grid>
                                             <Grid.ColumnDefinitions>
@@ -273,7 +340,7 @@
                 </Border>
 
                 <!-- Footer -->
-                <Border Grid.Row="5"
+                <Border Grid.Row="6"
                         Padding="12,8"
                         BorderBrush="{StaticResource DividerBrush}"
                         BorderThickness="0,1,0,0">

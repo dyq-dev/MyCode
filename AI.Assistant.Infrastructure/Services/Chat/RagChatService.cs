@@ -22,6 +22,8 @@ public sealed class RagChatService : IChatService
     private readonly IRagPromptBuilder _promptBuilder;
     private readonly ILogger<RagChatService> _logger;
 
+    public bool IsRagEnabled { get; set; } = true;
+
     internal RagQueryResult? LastRagResult { get; private set; }
 
     public RagChatService(IChatService inner, IRagQueryService ragQuery, IRagPromptBuilder promptBuilder, ILogger<RagChatService>? logger = null)
@@ -45,6 +47,14 @@ public sealed class RagChatService : IChatService
         IEnumerable<ChatMessage> history,
         [EnumeratorCancellation] CancellationToken ct)
     {
+        if (!IsRagEnabled)
+        {
+            LastRagResult = null;
+            await foreach (var chunk in _inner.StreamAsync(message, history, ct))
+                yield return chunk;
+            yield break;
+        }
+
         var result = await SafeQueryAsync(message, ct);
         LastRagResult = result;
 

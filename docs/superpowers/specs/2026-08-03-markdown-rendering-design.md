@@ -21,15 +21,21 @@
 
 ## 方案
 
-Markdig.Wpf：`Markdown.ToFlowDocument(text, pipeline, theme)`，渲染进只读 `RichTextBox`。
+Markdig.Wpf：`Markdig.Wpf.Markdown.ToFlowDocument(text, pipeline)`，渲染进只读 `RichTextBox`。
+样式通过 Markdig.Wpf 的 `Styles.*Key` (ComponentResourceKey) 在应用资源字典中覆盖实现。
+
+> 注：Markdig.Wpf 0.5.0.1（最后发布版，2021-01）没有 Theme 类。默认样式定义在包内
+> `Themes/generic.xaml`，通过 `Styles.CodeBlockStyleKey` 等 ComponentResourceKey 暴露。
+> 应用级资源字典优先级高于主题资源，可整体覆盖。
 
 ## 架构
 
 ```
 AI.Assistant.Client/
-└── Controls/
-    └── MarkdownView.cs      # 新控件：Markdown DP + 节流渲染
-    └── AppMarkdownTheme.cs  # 继承 Markdig.Wpf.Themes.Theme，贴合蓝色主题
+├── Controls/
+│   └── MarkdownView.cs      # 新控件：Markdown DP + 200ms 节流渲染（继承只读 RichTextBox）
+└── Themes/
+    └── Generic.xaml         # 追加 Markdig 样式覆盖（Styles.*Key，对齐蓝色主题）
 ```
 
 ### MarkdownView（继承 RichTextBox）
@@ -45,11 +51,19 @@ AI.Assistant.Client/
   - 空内容 → 空文档
   - `ToFlowDocument` 抛异常 → 回退为纯文本段落
 
-### AppMarkdownTheme
+### 样式覆盖（Themes/Generic.xaml）
 
-- 继承 `Markdig.Wpf.Themes.Theme`
-- 代码块背景沿用 RAG 框的 `#1E293B`，代码前景 `#E2E8F0`
-- 引用、链接、表格颜色匹配现有蓝色主题（AccentBrush）
+Markdig.Wpf 无 Theme 类。在 `Themes/Generic.xaml` 中以相同 ComponentResourceKey 覆盖：
+
+- `DocumentStyleKey` → `PrimaryFont`
+- `ParagraphStyleKey` → FontSize 14, LineHeight 22, `TextPrimaryBrush`
+- `CodeBlockStyleKey` → 背景 `#1E293B`、前景 `#E2E8F0`、`MonoFont`（与 RAG 框一致）
+- `CodeStyleKey`（行内代码）→ 背景 `#E2E8F0`、前景 `#1E3A8A`、`MonoFont`
+- `Heading1-3StyleKey` → 14-18px SemiBold、`TextPrimaryBrush`（覆盖默认 42px）
+- `QuoteBlockStyleKey` → `AccentLightBrush` 左边框、`TextSecondaryBrush`
+- `TableStyleKey` / `TableCellStyleKey` / `TableHeaderStyleKey` → `BorderColor` 边框
+- `HyperlinkStyleKey` → `AccentBrush` 前景
+- `ThematicBreakStyleKey` → `#E2E8F0`
 
 ### ChatMessageViewModel 变更
 
@@ -87,7 +101,9 @@ RichTextBox 原生文本选中复制（复制渲染后的文本）。不额外�
 
 ## 依赖
 
-- 新增 NuGet：`Markdig.Wpf`（含 Markdig 解析器）
+- 新增 NuGet：`Markdig.Wpf` 0.5.0.1（最后发布版，依赖 Markdig >= 0.22.0）
+- 同时显式固定 `Markdig` 0.38.0（避免 NuGet 解析到 1.x 引入破坏性 API 变更；若运行时报
+  TypeLoadException 则降级尝试 0.33.0）
 
 ## 测试
 

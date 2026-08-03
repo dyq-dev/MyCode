@@ -282,6 +282,7 @@ public partial class ConversationViewModel : ObservableObject
             };
             Messages.Add(demoMsg);
             StartWaiting(demoMsg);
+            demoMsg.IsRenderFinal = false;
             await Task.Delay(1500);
             EnqueueTypewriter(demoMsg, $"[Demo] 收到消息: {messageText}");
             StopWaiting(demoMsg, true);
@@ -299,6 +300,7 @@ public partial class ConversationViewModel : ObservableObject
             Role = MessageRole.Assistant,
             Timestamp = DateTime.Now
         };
+        assistantMessage.IsRenderFinal = false;
         Messages.Add(assistantMessage);
         StartWaiting(assistantMessage);
 
@@ -315,6 +317,7 @@ public partial class ConversationViewModel : ObservableObject
 
             // 等待打字机把队列里的字全部显示完
             await WaitForTypewriterAsync(_streamCts.Token);
+            assistantMessage.IsRenderFinal = true;
 
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
 
@@ -354,6 +357,7 @@ public partial class ConversationViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             FlushTypewriter();
+            assistantMessage.IsRenderFinal = true;
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
             if (assistantMessage.Content.Length == 0)
             {
@@ -366,6 +370,7 @@ public partial class ConversationViewModel : ObservableObject
             StopWaiting(assistantMessage, true);
             assistantMessage.Content = $"错误: {ex.Message}";
             assistantMessage.Role = MessageRole.System;
+            assistantMessage.IsRenderFinal = true;
         }
         finally
         {
@@ -442,6 +447,10 @@ public partial class ChatMessageViewModel : ObservableObject
     /// <summary>RAG 上下文原文（用于展开查看）</summary>
     [ObservableProperty]
     private string _ragContextText = "";
+
+    /// <summary>内容是否已最终确定（false 表示流式打字机仍在输出）</summary>
+    [ObservableProperty]
+    private bool _isRenderFinal = true;
 
     public bool IsUser => Role == MessageRole.User;
     public bool IsAssistant => Role == MessageRole.Assistant;

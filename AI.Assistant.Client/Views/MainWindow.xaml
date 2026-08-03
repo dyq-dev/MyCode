@@ -3,6 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:controls="clr-namespace:AI.Assistant.Client.Controls"
         xmlns:views="clr-namespace:AI.Assistant.Client.Views"
         mc:Ignorable="d"
         x:Name="RootWindow"
@@ -552,12 +553,9 @@
                                                                    Foreground="#1D4ED8" />
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBlock Grid.Row="2"
-                                                           Text="{Binding Content}"
-                                                           TextWrapping="Wrap"
-                                                           FontSize="14"
-                                                           LineHeight="22"
-                                                           Foreground="{StaticResource TextPrimaryBrush}" />
+                                                <controls:MarkdownView Grid.Row="2"
+                                                                       Markdown="{Binding Content}"
+                                                                       IsRenderFinal="{Binding IsRenderFinal}" />
 
                                                 <!-- RAG info (collapsible) -->
                                                 <Border Grid.Row="3" Margin="0,8,0,0"

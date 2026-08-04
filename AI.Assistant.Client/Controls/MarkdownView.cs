@@ -9,7 +9,8 @@ namespace AI.Assistant.Client.Controls;
 
 /// <summary>
 /// 只读 Markdown 渲染控件。
-/// Markdown 变化后 200ms 节流重渲染；IsRenderFinal=true 时立即渲染最终文档。
+/// 使用防抖+看门狗策略：内容稳定 400ms 后渲染，或连续流式超过 2s 强制渲染。
+/// IsRenderFinal=true 时立即渲染最终文档。
 /// </summary>
 public class MarkdownView : RichTextBox
 {
@@ -17,6 +18,8 @@ public class MarkdownView : RichTextBox
         new MarkdownPipelineBuilder().UseSupportedExtensions().Build();
 
     private readonly DispatcherTimer _renderTimer;
+    private DateTime _lastContentChange = DateTime.UtcNow;
+    private DateTime _lastRender = DateTime.MinValue;
 
     public static readonly DependencyProperty MarkdownProperty = DependencyProperty.Register(
         nameof(Markdown), typeof(string), typeof(MarkdownView),
@@ -51,12 +54,23 @@ public class MarkdownView : RichTextBox
         IsDocumentEnabled = true;
 
         _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(200) };
-        _renderTimer.Tick += (_, _) => Render();
+        _renderTimer.Tick += OnRenderTimerTick;
+    }
+
+    private void OnRenderTimerTick(object? sender, EventArgs e)
+    {
+        var now = DateTime.UtcNow;
+        var shouldRender = now - _lastContentChange >= TimeSpan.FromMilliseconds(400)
+            || now - _lastRender >= TimeSpan.FromSeconds(2);
+
+        if (shouldRender)
+            Render();
     }
 
     private static void OnMarkdownChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var view = (MarkdownView)d;
+        view._lastContentChange = DateTime.UtcNow;
         view._renderTimer.Stop();
         view._renderTimer.Start();
     }
@@ -74,6 +88,7 @@ public class MarkdownView : RichTextBox
     private void Render()
     {
         _renderTimer.Stop();
+        _lastRender = DateTime.UtcNow;
         var md = Markdown ?? string.Empty;
         try
         {

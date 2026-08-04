@@ -14,6 +14,7 @@ using AI.Assistant.Infrastructure.Services.Rag.Retrieval;
 using AI.Assistant.Infrastructure.Services.Rag.Scanner;
 using AI.Assistant.Infrastructure.Services.Rag.Storage;
 using AI.Assistant.Infrastructure.Services.Rag.Workspace;
+using AI.Assistant.Infrastructure.Services.Rag;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -103,6 +104,7 @@ public static class RagServiceCollectionExtensions
         services.AddSingleton<IWorkspaceManager>(sp =>
             new WorkspaceManager(sp.GetRequiredService<IWorkspaceStore>()));
         services.AddSingleton<IConversationStore, ConversationStore>();
+        services.AddSingleton<IWorkspaceRecoveryService, WorkspaceRecoveryService>();
         return services;
     }
 

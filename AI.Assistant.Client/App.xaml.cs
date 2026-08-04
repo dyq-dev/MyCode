@@ -95,6 +95,18 @@ public partial class App : Application
             foreach (var s in loaded)
                 workspace.AddSource(s);
 
+            // 启动自愈：workspace.json 丢失时从向量数据库恢复
+            if (workspace.GetSources().Count == 0)
+            {
+                var recovery = _host.Services.GetRequiredService<IWorkspaceRecoveryService>();
+                var recovered = Task.Run(() => recovery.RecoverSourcesAsync().GetAwaiter().GetResult()).GetAwaiter().GetResult();
+                foreach (var s in recovered)
+                    workspace.AddSource(s);
+
+                if (recovered.Count > 0)
+                    Debug.WriteLine($"[App] 从向量数据库恢复 {recovered.Count} 个知识源");
+            }
+
             var parsers = _host.Services.GetRequiredService<IEnumerable<IDocumentParser>>();
             var knowledgeStore = _host.Services.GetRequiredService<IKnowledgeStore>();
             var docSources = workspace.GetSources()

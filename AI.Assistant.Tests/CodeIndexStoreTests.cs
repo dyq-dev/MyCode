@@ -365,7 +365,7 @@ internal sealed class FakeQdrantIndexStorage : IQdrantIndexStorage
 
     public Task<IList<RetrievedPoint>> ScrollAllAsync(string collectionName, Filter filter, CancellationToken cancellationToken = default)
     {
-        var all = GetAll();
+        var all = _store.TryGetValue(collectionName, out var list) ? list : [];
         var filtered = filter is null ? all : all.Where(p => MatchesFilter(p, filter)).ToList();
 
         var result = filtered.Select(p =>
@@ -400,5 +400,15 @@ internal sealed class FakeQdrantIndexStorage : IQdrantIndexStorage
         if (cond.Field.Match?.Keywords is { } keywords)
             return keywords.Strings.Contains(value.StringValue);
         return false;
+    }
+
+    internal void AddPoint(string collection, string id, Dictionary<string, Value> payload)
+    {
+        _collections.Add(collection);
+        var store = _store.GetOrAdd(collection, _ => []);
+        var point = new PointStruct { Id = new PointId { Num = (ulong)store.Count } };
+        foreach (var kv in payload)
+            point.Payload.Add(kv.Key, kv.Value);
+        store.Add(point);
     }
 }

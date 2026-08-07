@@ -555,7 +555,7 @@
                                                 </StackPanel>
                                                 <controls:MarkdownView Grid.Row="2"
                                                                        Markdown="{Binding Content}"
-                                                                       IsRenderFinal="{Binding IsRenderFinal}" />
+                                                                       IsStreaming="{Binding IsStreaming}" />
 
                                                 <!-- RAG info (collapsible) -->
                                                 <Border Grid.Row="3" Margin="0,8,0,0"

@@ -1,30 +1,28 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
-using System.Windows.Threading;
 using Markdig;
 using Markdig.Wpf;
 
 namespace AI.Assistant.Client.Controls;
 
 /// <summary>
-/// 只读 Markdown 渲染控件。
-/// 使用节流策略：流式期间每 500ms 渲染一次，IsRenderFinal=true 时立即渲染最终文档。
+/// 只读 Markdown 渲染控件（方案 A）。
+/// 流式期间（IsStreaming=true）显示纯文本，零卡顿；
+/// 流式结束后（IsStreaming=false）渲染完整 Markdown。
 /// </summary>
 public class MarkdownView : RichTextBox
 {
     private static readonly MarkdownPipeline Pipeline =
         new MarkdownPipelineBuilder().UseSupportedExtensions().Build();
 
-    private readonly DispatcherTimer _renderTimer;
-
     public static readonly DependencyProperty MarkdownProperty = DependencyProperty.Register(
         nameof(Markdown), typeof(string), typeof(MarkdownView),
         new FrameworkPropertyMetadata(string.Empty, OnMarkdownChanged));
 
-    public static readonly DependencyProperty IsRenderFinalProperty = DependencyProperty.Register(
-        nameof(IsRenderFinal), typeof(bool), typeof(MarkdownView),
-        new FrameworkPropertyMetadata(true, OnIsRenderFinalChanged));
+    public static readonly DependencyProperty IsStreamingProperty = DependencyProperty.Register(
+        nameof(IsStreaming), typeof(bool), typeof(MarkdownView),
+        new FrameworkPropertyMetadata(false, OnIsStreamingChanged));
 
     public string Markdown
     {
@@ -32,10 +30,10 @@ public class MarkdownView : RichTextBox
         set => SetValue(MarkdownProperty, value);
     }
 
-    public bool IsRenderFinal
+    public bool IsStreaming
     {
-        get => (bool)GetValue(IsRenderFinalProperty);
-        set => SetValue(IsRenderFinalProperty, value);
+        get => (bool)GetValue(IsStreamingProperty);
+        set => SetValue(IsStreamingProperty, value);
     }
 
     public MarkdownView()
@@ -49,31 +47,34 @@ public class MarkdownView : RichTextBox
         VerticalScrollBarVisibility = ScrollBarVisibility.Disabled;
         HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
         IsDocumentEnabled = true;
-
-        _renderTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
-        _renderTimer.Tick += (_, _) => Render();
     }
 
     private static void OnMarkdownChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var view = (MarkdownView)d;
-        view._renderTimer.Stop();
-        view._renderTimer.Start();
+        if (!view.IsStreaming)
+            view.RenderMarkdown();
+        else
+            view.RenderPlainText();
     }
 
-    private static void OnIsRenderFinalChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
+    private static void OnIsStreamingChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var view = (MarkdownView)d;
-        if (view.IsRenderFinal)
-        {
-            view._renderTimer.Stop();
-            view.Render();
-        }
+        if (view.IsStreaming)
+            view.RenderPlainText();
+        else
+            view.RenderMarkdown();
     }
 
-    private void Render()
+    private void RenderPlainText()
     {
-        _renderTimer.Stop();
+        var md = Markdown ?? string.Empty;
+        Document = new FlowDocument(new Paragraph(new Run(md)));
+    }
+
+    private void RenderMarkdown()
+    {
         var md = Markdown ?? string.Empty;
         try
         {

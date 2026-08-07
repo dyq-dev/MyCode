@@ -282,9 +282,11 @@ public partial class ConversationViewModel : ObservableObject
             };
             Messages.Add(demoMsg);
             StartWaiting(demoMsg);
+            demoMsg.IsStreaming = true;
             demoMsg.IsRenderFinal = false;
             await Task.Delay(1500);
             EnqueueTypewriter(demoMsg, $"[Demo] 收到消息: {messageText}");
+            demoMsg.IsStreaming = false;
             StopWaiting(demoMsg, true);
             IsBusy = false;
             return;
@@ -301,6 +303,7 @@ public partial class ConversationViewModel : ObservableObject
             Timestamp = DateTime.Now
         };
         assistantMessage.IsRenderFinal = false;
+        assistantMessage.IsStreaming = true;
         Messages.Add(assistantMessage);
         StartWaiting(assistantMessage);
 
@@ -317,6 +320,7 @@ public partial class ConversationViewModel : ObservableObject
 
             // 等待打字机把队列里的字全部显示完
             await WaitForTypewriterAsync(_streamCts.Token);
+            assistantMessage.IsStreaming = false;
             assistantMessage.IsRenderFinal = true;
 
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
@@ -357,6 +361,7 @@ public partial class ConversationViewModel : ObservableObject
         catch (OperationCanceledException)
         {
             FlushTypewriter();
+            assistantMessage.IsStreaming = false;
             assistantMessage.IsRenderFinal = true;
             StopWaiting(assistantMessage, assistantMessage.Content.Length > 0);
             if (assistantMessage.Content.Length == 0)
@@ -370,6 +375,7 @@ public partial class ConversationViewModel : ObservableObject
             StopWaiting(assistantMessage, true);
             assistantMessage.Content = $"错误: {ex.Message}";
             assistantMessage.Role = MessageRole.System;
+            assistantMessage.IsStreaming = false;
             assistantMessage.IsRenderFinal = true;
         }
         finally
@@ -451,6 +457,10 @@ public partial class ChatMessageViewModel : ObservableObject
     /// <summary>内容是否已最终确定（false 表示流式打字机仍在输出）</summary>
     [ObservableProperty]
     private bool _isRenderFinal = true;
+
+    /// <summary>是否正在流式输出（true 时 MarkdownView 显示纯文本，零卡顿）</summary>
+    [ObservableProperty]
+    private bool _isStreaming;
 
     public bool IsUser => Role == MessageRole.User;
     public bool IsAssistant => Role == MessageRole.Assistant;

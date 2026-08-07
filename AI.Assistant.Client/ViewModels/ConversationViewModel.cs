@@ -106,7 +106,7 @@ public partial class ConversationViewModel : ObservableObject
         if (_waitingMessage is not null)
         {
             var elapsed = DateTime.Now - _waitStartTime;
-            _waitingMessage.DisplayTime = $"{elapsed.Seconds}s";
+            _waitingMessage.DisplayTime = $"{(int)elapsed.TotalSeconds}s";
         }
     }
 
